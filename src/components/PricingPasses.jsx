@@ -8,11 +8,11 @@ export const PricingPasses = ({ onOpenBooking }) => {
         <div className="section-header">
           <div className="section-badge">
             <Zap size={14} />
-            <span>Passes</span>
+            <span>Combo Passes</span>
           </div>
-          <h2 className="section-title">Battle Passes</h2>
+          <h2 className="section-title">Value Passes</h2>
           <p className="section-desc">
-            All-access multi-attraction combo passes with priority entry.
+            Bundle multiple games together and save on individual ticket prices.
           </p>
         </div>
 
@@ -46,7 +46,7 @@ export const PricingPasses = ({ onOpenBooking }) => {
                 style={{ width: '100%' }}
               >
                 <Zap size={16} />
-                <span>Get {pass.name}</span>
+                <span>Select {pass.name}</span>
               </button>
             </div>
           ))}

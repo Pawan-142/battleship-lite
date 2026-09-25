@@ -8,11 +8,11 @@ export const Attractions = ({ onOpenBooking }) => {
         <div className="section-header">
           <div className="section-badge">
             <Zap size={14} />
-            <span>Arenas</span>
+            <span>Games & Activities</span>
           </div>
-          <h2 className="section-title">Attractions</h2>
+          <h2 className="section-title">Games</h2>
           <p className="section-desc">
-            Tournament-grade equipment, dynamic UV lighting, and smart sensory scoring.
+            Single activity tickets. Walk-ins welcome or reserve your slot online.
           </p>
         </div>
 
@@ -33,7 +33,7 @@ export const Attractions = ({ onOpenBooking }) => {
                   <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 700 }}>★ {game.rating}</span>
                 </div>
 
-                {/* Quick Minimal Specs */}
+                {/* Quick Specs */}
                 <div className="card-specs">
                   <div className="spec-item">
                     <Users size={14} style={{ color: 'var(--accent-cyan)' }} />

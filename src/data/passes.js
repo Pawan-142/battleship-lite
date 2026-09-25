@@ -1,41 +1,41 @@
 export const PASSES = [
   {
-    id: 'solo-pass',
-    name: 'Solo Pass',
+    id: 'starter-pass',
+    name: '2-Game Pass',
     price: 699,
     originalPrice: 899,
     popular: false,
-    badge: 'Starter',
+    badge: 'Saver',
     features: [
-      '2 Main Arena Attractions',
-      '50 Arcade Tokens',
-      'Welcome Energy Drink'
+      'Pick any 2 games',
+      '50 arcade game coins',
+      '1 soft drink / water'
     ]
   },
   {
-    id: 'duo-battle-pass',
-    name: 'Duo Battle Pass',
+    id: 'combo-pass',
+    name: 'Popular Combo',
     price: 1299,
     originalPrice: 1699,
     popular: true,
-    badge: 'Popular',
+    badge: 'Best Value',
     features: [
-      'Laser Combat + Bumper Cars',
-      'Glow Bowling Match',
-      '100 Arcade Tokens + Drinks'
+      'Laser tag + Bumper cars',
+      '1 full bowling game',
+      '100 arcade coins + 2 drinks'
     ]
   },
   {
-    id: 'squad-all-access',
-    name: 'Squad All-Access',
+    id: 'all-access',
+    name: 'All-Access Pass',
     price: 2499,
     originalPrice: 3499,
     popular: false,
-    badge: 'Full Arena',
+    badge: 'Full Access',
     features: [
-      'All 6 Arena Attractions',
-      '250 Shared Arcade Tokens',
-      'VIP Priority Fast-Track'
+      'Play all 6 games',
+      '250 arcade game coins',
+      'Skip the queue priority entry'
     ]
   }
 ];
