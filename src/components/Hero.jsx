@@ -1,14 +1,56 @@
-import { useState } from 'react';
-import { ArrowRight, Calendar, Users, Zap } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowRight, ChevronLeft, ChevronRight, Play, Pause, Zap, Sparkles } from 'lucide-react';
 import { GAMES } from '../data/games';
 import { PASSES } from '../data/passes';
 
 export const Hero = ({ onOpenBooking }) => {
+  // Quick Booker Bar State
   const [selectedActivity, setSelectedActivity] = useState('laser-combat');
   const [selectedSquadSize, setSelectedSquadSize] = useState('4');
   const [selectedDate, setSelectedDate] = useState(() => {
     return new Date().toISOString().split('T')[0];
   });
+
+  // Carousel State
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+
+  // Auto-play interval
+  useEffect(() => {
+    if (!isPlaying) return;
+    const interval = setInterval(() => {
+      setActiveSlide(prev => (prev + 1) % GAMES.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isPlaying, activeSlide]);
+
+  const handleNextSlide = () => {
+    setActiveSlide(prev => (prev + 1) % GAMES.length);
+  };
+
+  const handlePrevSlide = () => {
+    setActiveSlide(prev => (prev - 1 + GAMES.length) % GAMES.length);
+  };
+
+  // Touch Handlers for Mobile Swipe
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current - touchEndX.current > 50) {
+      handleNextSlide(); // Swipe left -> next
+    }
+    if (touchStartX.current - touchEndX.current < -50) {
+      handlePrevSlide(); // Swipe right -> prev
+    }
+  };
 
   const handleQuickBook = (e) => {
     e.preventDefault();
@@ -16,6 +58,8 @@ export const Hero = ({ onOpenBooking }) => {
     const pass = PASSES.find(p => p.id === selectedActivity);
     onOpenBooking(game || pass || null);
   };
+
+  const currentSlideGame = GAMES[activeSlide];
 
   return (
     <section id="hero" className="hero-editorial">
@@ -36,7 +80,7 @@ export const Hero = ({ onOpenBooking }) => {
           15,000 sq ft of high-intensity laser combat, electric bumper drift, regulation UV glow bowling, and VR motion simulation in Hyderabad.
         </p>
 
-        {/* Interactive Quick Booker Widget */}
+        {/* Interactive Quick Booker Bar */}
         <form onSubmit={handleQuickBook} className="hero-booker-bar">
           <div className="booker-field">
             <label className="booker-label">Experience</label>
@@ -88,51 +132,129 @@ export const Hero = ({ onOpenBooking }) => {
           </button>
         </form>
 
-        {/* Photo Showcase Reel */}
-        <div className="hero-showcase-grid">
-          {/* Main Featured Photo */}
-          <div 
-            className="showcase-featured-tile"
-            onClick={() => onOpenBooking(GAMES[0])}
-          >
-            <img src={GAMES[0].image} alt={GAMES[0].title} />
-            <span className="showcase-badge">Featured Combat Zone</span>
-            <div className="showcase-tile-overlay">
-              <h3 className="showcase-heading">{GAMES[0].title}</h3>
-              <div className="showcase-meta-line">
-                <span>{GAMES[0].duration} • {GAMES[0].players}</span>
-                <span>•</span>
-                <span style={{ fontWeight: 700, color: '#fff' }}>₹{GAMES[0].price} / player</span>
-              </div>
-            </div>
+        {/* ==========================================================================
+           CINEMATIC HERO CAROUSEL
+           ========================================================================== */}
+        <div 
+          className="hero-carousel-container"
+          onMouseEnter={() => setIsPlaying(false)}
+          onMouseLeave={() => setIsPlaying(true)}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Top Slide Tabs Navigation */}
+          <div className="carousel-tabs-bar">
+            {GAMES.map((game, idx) => (
+              <button
+                key={game.id}
+                onClick={() => setActiveSlide(idx)}
+                className={`carousel-tab-btn ${activeSlide === idx ? 'active' : ''}`}
+              >
+                <span className="carousel-tab-num">0{idx + 1} // {game.category}</span>
+                <span>{game.title}</span>
+                {activeSlide === idx && isPlaying && (
+                  <div className="carousel-tab-progress" />
+                )}
+              </button>
+            ))}
           </div>
 
-          {/* Side Tile 1 */}
-          <div 
-            className="showcase-side-tile"
-            onClick={() => onOpenBooking(GAMES[1])}
-          >
-            <img src={GAMES[1].image} alt={GAMES[1].title} />
-            <span className="showcase-badge">Velocity Track</span>
-            <div className="showcase-tile-overlay">
-              <h3 className="showcase-heading" style={{ fontSize: '1.25rem' }}>{GAMES[1].title}</h3>
-              <div className="showcase-meta-line">
-                <span>₹{GAMES[1].price}</span>
-              </div>
-            </div>
-          </div>
+          {/* Carousel Stage */}
+          <div className="hero-carousel-stage">
+            {/* Background Images for all slides (preloaded & smooth crossfade) */}
+            {GAMES.map((game, idx) => (
+              <img
+                key={game.id}
+                src={game.image}
+                alt={game.title}
+                className={`carousel-slide-bg ${activeSlide === idx ? 'active' : 'inactive'}`}
+              />
+            ))}
 
-          {/* Side Tile 2 */}
-          <div 
-            className="showcase-side-tile"
-            onClick={() => onOpenBooking(GAMES[2])}
-          >
-            <img src={GAMES[2].image} alt={GAMES[2].title} />
-            <span className="showcase-badge">Lounge & Lanes</span>
-            <div className="showcase-tile-overlay">
-              <h3 className="showcase-heading" style={{ fontSize: '1.25rem' }}>{GAMES[2].title}</h3>
-              <div className="showcase-meta-line">
-                <span>₹{GAMES[2].price}</span>
+            {/* Gradient Dark Overlay */}
+            <div className="carousel-gradient-overlay" />
+
+            {/* Left/Right Floating Navigation Arrows */}
+            <button 
+              onClick={handlePrevSlide} 
+              className="carousel-nav-btn prev"
+              aria-label="Previous Slide"
+            >
+              <ChevronLeft size={22} />
+            </button>
+
+            <button 
+              onClick={handleNextSlide} 
+              className="carousel-nav-btn next"
+              aria-label="Next Slide"
+            >
+              <ChevronRight size={22} />
+            </button>
+
+            {/* Active Slide Content */}
+            <div className="carousel-slide-content">
+              <div className="carousel-slide-info">
+                <div className="carousel-slide-badge">
+                  <Sparkles size={12} />
+                  <span>{currentSlideGame.tag} • {currentSlideGame.category}</span>
+                </div>
+
+                <h2 className="carousel-slide-title">
+                  {currentSlideGame.title}
+                </h2>
+
+                <p className="carousel-slide-desc">
+                  {currentSlideGame.shortNote}
+                </p>
+
+                <div className="carousel-slide-meta">
+                  <span className="carousel-meta-pill">⏱ {currentSlideGame.duration}</span>
+                  <span className="carousel-meta-pill">👥 {currentSlideGame.players}</span>
+                  <span className="carousel-meta-pill" style={{ color: '#fff', fontWeight: 700 }}>
+                    ₹{currentSlideGame.price} / person
+                  </span>
+                  <span className="carousel-meta-pill" style={{ opacity: 0.8 }}>
+                    ⚡ {currentSlideGame.intensity}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons & Slide Counter */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button 
+                    onClick={() => onOpenBooking(currentSlideGame)}
+                    className="btn-red"
+                    style={{ padding: '0.75rem 1.4rem' }}
+                  >
+                    <span>Book This Game (₹{currentSlideGame.price})</span>
+                    <ArrowRight size={16} />
+                  </button>
+
+                  <a 
+                    href="#passes" 
+                    className="btn-secondary"
+                    style={{ padding: '0.75rem 1.2rem' }}
+                  >
+                    View Passes
+                  </a>
+                </div>
+
+                {/* Bottom Status & Pause/Play Control */}
+                <div className="carousel-controls-bottom">
+                  <button 
+                    onClick={() => setIsPlaying(prev => !prev)} 
+                    className="carousel-play-toggle"
+                    title={isPlaying ? 'Pause Autoplay' : 'Resume Autoplay'}
+                    aria-label="Play / Pause Carousel"
+                  >
+                    {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                  </button>
+                  <span className="carousel-counter-text">
+                    0{activeSlide + 1} / 0{GAMES.length}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
