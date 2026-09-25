@@ -1,94 +1,160 @@
 import { useState } from 'react';
-import { ArrowRight, MapPin, Zap } from 'lucide-react';
+import { ArrowRight, Calendar, Users, Zap } from 'lucide-react';
 import { GAMES } from '../data/games';
+import { PASSES } from '../data/passes';
 
 export const Hero = ({ onOpenBooking }) => {
-  const [isSwiping, setIsSwiping] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState('laser-combat');
+  const [selectedSquadSize, setSelectedSquadSize] = useState('4');
+  const [selectedDate, setSelectedDate] = useState(() => {
+    return new Date().toISOString().split('T')[0];
+  });
 
-  const handleCtaSwipe = (e) => {
+  const handleQuickBook = (e) => {
     e.preventDefault();
-    if (isSwiping) return;
-    setIsSwiping(true);
-    setTimeout(() => {
-      setIsSwiping(false);
-      const el = document.getElementById('attractions');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }, 400);
+    const game = GAMES.find(g => g.id === selectedActivity);
+    const pass = PASSES.find(p => p.id === selectedActivity);
+    onOpenBooking(game || pass || null);
   };
 
   return (
-    <section id="hero" className="hero-section">
-      <div className="hero-bg-backdrop">
-        <img 
-          src="/images/hero_battleship_arena_bg.jpg" 
-          alt="Battleship Gaming Zone Arena" 
-          className="hero-bg-img"
-        />
-        <div className="hero-overlay" />
-      </div>
+    <section id="hero" className="hero-editorial">
+      <div className="container">
+        {/* Live Status & Coordinates Ticker */}
+        <div className="hero-ticker">
+          <span className="status-live-dot" />
+          <span>OPEN TODAY TIL 11:00 PM • 17.4875° N, 78.3853° E • NEXUS MALL 4TH FL</span>
+        </div>
 
-      <div className="container hero-grid">
-        {/* Left Column */}
-        <div className="hero-left">
-          <div className="hero-eyebrow">
-            <span>GAMING ARENA • HITECH CITY</span>
+        {/* Cinematic Headline */}
+        <h1 className="hero-title-editorial">
+          Physical Gaming,<br />
+          <span className="accent-text">Elevated.</span>
+        </h1>
+
+        <p className="hero-desc-editorial">
+          15,000 sq ft of high-intensity laser combat, electric bumper drift, regulation UV glow bowling, and VR motion simulation in Hyderabad.
+        </p>
+
+        {/* Interactive Quick Booker Widget */}
+        <form onSubmit={handleQuickBook} className="hero-booker-bar">
+          <div className="booker-field">
+            <label className="booker-label">Experience</label>
+            <select 
+              value={selectedActivity} 
+              onChange={(e) => setSelectedActivity(e.target.value)}
+              className="booker-select"
+            >
+              <optgroup label="Single Attractions">
+                {GAMES.map(game => (
+                  <option key={game.id} value={game.id}>{game.title} (₹{game.price})</option>
+                ))}
+              </optgroup>
+              <optgroup label="Squad Passes">
+                {PASSES.map(pass => (
+                  <option key={pass.id} value={pass.id}>{pass.name} (₹{pass.price})</option>
+                ))}
+              </optgroup>
+            </select>
           </div>
 
-          <h1 className="hero-heading">
-            HYDERABAD’S BIGGEST<br />
-            <span style={{ color: 'var(--accent-cyan)' }}>GAMING ARENA.</span>
-          </h1>
+          <div className="booker-field">
+            <label className="booker-label">Session Date</label>
+            <input 
+              type="date" 
+              value={selectedDate} 
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="booker-input"
+            />
+          </div>
 
-          <p className="hero-subtitle">
-            Laser tag, electric bumper cars, glow bowling, and VR rides. Open every day till 11 PM.
-          </p>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', marginBottom: '2.5rem' }}>
-            {/* Interactive Swipe CTA */}
-            <button 
-              onClick={handleCtaSwipe}
-              className={`hero-cta-pill ${isSwiping ? 'is-swiping' : ''}`}
-              type="button"
+          <div className="booker-field">
+            <label className="booker-label">Squad Size</label>
+            <select 
+              value={selectedSquadSize} 
+              onChange={(e) => setSelectedSquadSize(e.target.value)}
+              className="booker-select"
             >
-              <div className="cta-circle-arrow">
-                <ArrowRight size={18} />
+              <option value="2">2 Players (Duo)</option>
+              <option value="4">4 Players (Squad)</option>
+              <option value="6">6 Players (Group)</option>
+              <option value="10">10+ Players (Party)</option>
+            </select>
+          </div>
+
+          <button type="submit" className="btn-red" style={{ height: '100%', minHeight: '48px' }}>
+            <span>Reserve Slot</span>
+            <ArrowRight size={16} />
+          </button>
+        </form>
+
+        {/* Photo Showcase Reel */}
+        <div className="hero-showcase-grid">
+          {/* Main Featured Photo */}
+          <div 
+            className="showcase-featured-tile"
+            onClick={() => onOpenBooking(GAMES[0])}
+          >
+            <img src={GAMES[0].image} alt={GAMES[0].title} />
+            <span className="showcase-badge">Featured Combat Zone</span>
+            <div className="showcase-tile-overlay">
+              <h3 className="showcase-heading">{GAMES[0].title}</h3>
+              <div className="showcase-meta-line">
+                <span>{GAMES[0].duration} • {GAMES[0].players}</span>
+                <span>•</span>
+                <span style={{ fontWeight: 700, color: '#fff' }}>₹{GAMES[0].price} / player</span>
               </div>
-              <span style={{ position: 'relative', zIndex: 2 }}>VIEW GAMES</span>
-              <div className="cta-swipe-trail" />
-            </button>
-
-            <button 
-              onClick={() => onOpenBooking(null)}
-              className="btn-cyber btn-primary"
-            >
-              <Zap size={16} />
-              <span>BOOK SLOTS</span>
-            </button>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontFamily: 'var(--font-display)' }}>
-            <MapPin size={15} style={{ color: 'var(--accent-cyan)' }} />
-            <span>NEXUS MALL, 4TH FLOOR, MADHAPUR • HYDERABAD</span>
+          {/* Side Tile 1 */}
+          <div 
+            className="showcase-side-tile"
+            onClick={() => onOpenBooking(GAMES[1])}
+          >
+            <img src={GAMES[1].image} alt={GAMES[1].title} />
+            <span className="showcase-badge">Velocity Track</span>
+            <div className="showcase-tile-overlay">
+              <h3 className="showcase-heading" style={{ fontSize: '1.25rem' }}>{GAMES[1].title}</h3>
+              <div className="showcase-meta-line">
+                <span>₹{GAMES[1].price}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Side Tile 2 */}
+          <div 
+            className="showcase-side-tile"
+            onClick={() => onOpenBooking(GAMES[2])}
+          >
+            <img src={GAMES[2].image} alt={GAMES[2].title} />
+            <span className="showcase-badge">Lounge & Lanes</span>
+            <div className="showcase-tile-overlay">
+              <h3 className="showcase-heading" style={{ fontSize: '1.25rem' }}>{GAMES[2].title}</h3>
+              <div className="showcase-meta-line">
+                <span>₹{GAMES[2].price}</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Right Column: 3 Real Quick Cards */}
-        <div className="hero-right">
-          <div className="hero-cards-stack">
-            {GAMES.slice(0, 3).map((game) => (
-              <div 
-                key={game.id} 
-                onClick={() => onOpenBooking(game)}
-                className="hero-preview-item"
-              >
-                <img src={game.image} alt={game.title} className="preview-thumb" />
-                <div className="preview-info">
-                  <h4>{game.title}</h4>
-                  <p>{game.duration} • ₹{game.price} per person</p>
-                </div>
-                <ArrowRight size={16} className="preview-arrow" />
-              </div>
-            ))}
+        {/* Venue Metric Strip */}
+        <div className="venue-stat-strip">
+          <div className="stat-item">
+            <span className="stat-number">15,000</span>
+            <span className="stat-desc">Sq Ft Arena Floor</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-number">6 Arenas</span>
+            <span className="stat-desc">Tactical, Track & VR</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-number">50+ Games</span>
+            <span className="stat-desc">Arcade & Redemption</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-number">4.9 ★</span>
+            <span className="stat-desc">Over 2,400+ Verified Visits</span>
           </div>
         </div>
       </div>
