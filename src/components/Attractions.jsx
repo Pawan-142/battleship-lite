@@ -1,4 +1,4 @@
-import { Users, Clock, Zap, Star } from 'lucide-react';
+import { Users, Clock, Zap } from 'lucide-react';
 import { GAMES } from '../data/games';
 
 export const Attractions = ({ onOpenBooking }) => {
@@ -8,11 +8,11 @@ export const Attractions = ({ onOpenBooking }) => {
         <div className="section-header">
           <div className="section-badge">
             <Zap size={14} />
-            <span>Arena Attractions</span>
+            <span>Arenas</span>
           </div>
-          <h2 className="section-title">6 Pulse-Pounding Arenas</h2>
+          <h2 className="section-title">Attractions</h2>
           <p className="section-desc">
-            Equipped with state-of-the-art sensory technology, smart scoring, and tournament-grade equipment.
+            Tournament-grade equipment, dynamic UV lighting, and smart sensory scoring.
           </p>
         </div>
 
@@ -28,23 +28,20 @@ export const Attractions = ({ onOpenBooking }) => {
 
               {/* Body */}
               <div className="card-body">
-                <h3 className="card-title">{game.title}</h3>
-                <div className="card-tagline">{game.tagline}</div>
-                <p className="card-desc">{game.desc}</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                  <h3 className="card-title" style={{ margin: 0 }}>{game.title}</h3>
+                  <span style={{ fontSize: '0.85rem', color: '#f59e0b', fontWeight: 700 }}>★ {game.rating}</span>
+                </div>
 
-                {/* Specs */}
+                {/* Quick Minimal Specs */}
                 <div className="card-specs">
                   <div className="spec-item">
-                    <Users size={15} style={{ color: 'var(--accent-cyan)' }} />
+                    <Users size={14} style={{ color: 'var(--accent-cyan)' }} />
                     <span>{game.players}</span>
                   </div>
-                  <div className="spec-item">
-                    <Clock size={15} style={{ color: 'var(--accent-cyan)' }} />
-                    <span>{game.duration}</span>
-                  </div>
                   <div className="spec-item" style={{ marginLeft: 'auto' }}>
-                    <Star size={15} style={{ color: '#f59e0b', fill: '#f59e0b' }} />
-                    <span style={{ fontWeight: 700 }}>{game.rating}</span>
+                    <Clock size={14} style={{ color: 'var(--accent-cyan)' }} />
+                    <span>{game.duration}</span>
                   </div>
                 </div>
 
@@ -52,10 +49,10 @@ export const Attractions = ({ onOpenBooking }) => {
                 <button 
                   onClick={() => onOpenBooking(game)}
                   className="btn-cyber btn-primary"
-                  style={{ width: '100%' }}
+                  style={{ width: '100%', padding: '0.65rem 1rem', fontSize: '0.82rem' }}
                 >
-                  <Zap size={16} />
-                  <span>Book {game.title.split(' ')[0]}</span>
+                  <Zap size={15} />
+                  <span>Book Slot • ₹{game.price}</span>
                 </button>
               </div>
             </div>

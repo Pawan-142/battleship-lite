@@ -1,4 +1,4 @@
-import { Check, Zap, Sparkles } from 'lucide-react';
+import { Check, Zap } from 'lucide-react';
 import { PASSES } from '../data/passes';
 
 export const PricingPasses = ({ onOpenBooking }) => {
@@ -7,12 +7,12 @@ export const PricingPasses = ({ onOpenBooking }) => {
       <div className="container">
         <div className="section-header">
           <div className="section-badge">
-            <Sparkles size={14} />
-            <span>Pricing & Arena Passes</span>
+            <Zap size={14} />
+            <span>Passes</span>
           </div>
-          <h2 className="section-title">All-Inclusive Battle Passes</h2>
+          <h2 className="section-title">Battle Passes</h2>
           <p className="section-desc">
-            Save up to 35% with bundle passes. Instant booking, priority arena entry, and complimentary arcade tokens.
+            All-access multi-attraction combo passes with priority entry.
           </p>
         </div>
 
@@ -24,7 +24,6 @@ export const PricingPasses = ({ onOpenBooking }) => {
             >
               {pass.badge && <span className="pass-badge">{pass.badge}</span>}
               <h3 className="pass-name">{pass.name}</h3>
-              <p className="pass-tagline">{pass.tagline}</p>
 
               <div className="pass-price-wrap">
                 <span className="pass-price">₹{pass.price}</span>
@@ -47,7 +46,7 @@ export const PricingPasses = ({ onOpenBooking }) => {
                 style={{ width: '100%' }}
               >
                 <Zap size={16} />
-                <span>Select {pass.name}</span>
+                <span>Get {pass.name}</span>
               </button>
             </div>
           ))}
