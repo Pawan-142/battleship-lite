@@ -55,7 +55,7 @@ export const GAMES = [
   },
   {
     id: 'vr-immersion',
-    title: 'VR 360° Motion Pods',
+    title: 'Pimax 8K VR Motion Pods',
     categoryKey: 'vr',
     category: 'VR Simulation',
     image: '/images/vr-pods.jpg',
@@ -63,10 +63,10 @@ export const GAMES = [
     duration: '12 mins',
     price: 299,
     intensity: 'High (4/5)',
-    gear: '4K headsets, 6-DOF hydraulic motion platforms, wind and haptic feedback',
-    shortNote: 'Full-motion sensory simulation including rollercoaster runs and deep-space dogfights.',
-    rating: 4.7,
-    tag: 'Immersive'
+    gear: 'Pimax Crystal 8K headsets, 6-DOF hydraulic motion platforms, wind and haptic feedback',
+    shortNote: 'Ultra-wide FOV Pimax 8K VR sensory simulation with full-motion dogfights and thrill coasters.',
+    rating: 4.8,
+    tag: 'Pimax VR'
   },
   {
     id: 'arcade-arena',

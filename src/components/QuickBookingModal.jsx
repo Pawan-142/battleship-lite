@@ -18,8 +18,8 @@ export const QuickBookingModal = ({ initialItem, onClose }) => {
     return initialItem?.id || GAMES[0].id;
   });
 
-  const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [timeSlot, setTimeSlot] = useState('18:00');
+  const [date, setDate] = useState(() => initialItem?.preferredDate || new Date().toISOString().split('T')[0]);
+  const [timeSlot, setTimeSlot] = useState(() => initialItem?.preferredSlot || '18:00');
   const [players, setPlayers] = useState(() => initialItem?.players || 2);
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
