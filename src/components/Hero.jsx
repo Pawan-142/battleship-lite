@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, ChevronLeft, ChevronRight, Play, Pause, Sparkles, Check, Zap, Calendar, Users, Clock } from 'lucide-react';
 import { GAMES } from '../data/games';
 import { PASSES } from '../data/passes';
+import { CUSTOM_PASS_ID, customPassPerPerson } from '../data/pricing';
+import { todayIST } from '../lib/format';
 
 export const Hero = ({ onOpenBooking }) => {
   // Carousel State (100vh Fullscreen)
@@ -11,29 +14,25 @@ export const Hero = ({ onOpenBooking }) => {
   const touchEndX = useRef(0);
 
   // Available Experiences Selector State (Directly below carousel)
-  const [selectedExperienceId, setSelectedExperienceId] = useState('vr-immersion'); // Default to Pimax 8K VR
-  const [selectedDate, setSelectedDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  const [selectorMode, setSelectorMode] = useState('games'); // 'games' or 'passes'
+  const [checkedGameIds, setCheckedGameIds] = useState(['vr-immersion']); // Checkbox array
+  const [selectedPassId, setSelectedPassId] = useState(() => PASSES[1].id); // Squad Warfare Pass
+
+  const [selectedDate, setSelectedDate] = useState(() => todayIST());
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('18:00');
   const [selectedPlayers, setSelectedPlayers] = useState(2);
 
-  // Combine Games and Passes for the Available Selector
-  const allSelectableItems = [
-    ...GAMES,
-    {
-      id: PASSES[1].id,
-      title: 'Squad Warfare Combo Pass',
-      category: '4-in-1 Combo',
-      image: '/images/party-suite.jpg',
-      price: PASSES[1].price,
-      duration: 'Full Session',
-      players: '2 to 10 players',
-      tag: 'Best Value Pass',
-      isPass: true,
-      rawPass: PASSES[1]
-    }
-  ];
+  // Toggle arena checkbox
+  const handleToggleGame = (gameId) => {
+    setCheckedGameIds(prev => {
+      if (prev.includes(gameId)) {
+        if (prev.length <= 1) return prev; // Keep at least 1 checked
+        return prev.filter(id => id !== gameId);
+      } else {
+        return [...prev, gameId];
+      }
+    });
+  };
 
   // Auto-play interval for Hero Carousel
   useEffect(() => {
@@ -55,6 +54,7 @@ export const Hero = ({ onOpenBooking }) => {
   // Touch Handlers for Mobile Swipe
   const handleTouchStart = (e) => {
     touchStartX.current = e.targetTouches[0].clientX;
+    touchEndX.current = 0;
   };
 
   const handleTouchMove = (e) => {
@@ -62,31 +62,68 @@ export const Hero = ({ onOpenBooking }) => {
   };
 
   const handleTouchEnd = () => {
-    if (touchStartX.current - touchEndX.current > 50) {
+    if (!touchEndX.current) return;
+    const diff = touchStartX.current - touchEndX.current;
+    if (diff > 50) {
       handleNextSlide();
-    }
-    if (touchStartX.current - touchEndX.current < -50) {
+    } else if (diff < -50) {
       handlePrevSlide();
     }
+    touchEndX.current = 0;
   };
 
   const currentSlideGame = GAMES[activeSlide];
 
-  // Currently selected item in the selector deck
-  const activeSelectedItem = allSelectableItems.find(item => item.id === selectedExperienceId) || allSelectableItems[0];
-  const calculatedTotal = activeSelectedItem.price * selectedPlayers;
+  // Pricing calculation
+  const isMultiGame = checkedGameIds.length > 1;
+  const bundle = customPassPerPerson(checkedGameIds);
+  const bundleDiscountRate = bundle.rate;
+
+  let calculatedTotal = 0;
+  let summaryLabel = '';
+  let summarySpecs = '';
+
+  if (selectorMode === 'games') {
+    if (isMultiGame) {
+      calculatedTotal = bundle.perPerson * selectedPlayers;
+      summaryLabel = `${checkedGameIds.length} Arenas Checked (${Math.round(bundleDiscountRate * 100)}% OFF)`;
+      summarySpecs = `₹${bundle.perPerson} / player • ${checkedGameIds.length} Arenas Bundled`;
+    } else {
+      const g = GAMES.find(x => x.id === checkedGameIds[0]) || GAMES[0];
+      calculatedTotal = g.price * selectedPlayers;
+      summaryLabel = g.title;
+      summarySpecs = `₹${g.price} / player • ${g.duration}`;
+    }
+  } else {
+    const p = PASSES.find(x => x.id === selectedPassId) || PASSES[0];
+    calculatedTotal = p.price;
+    summaryLabel = p.name;
+    summarySpecs = `₹${p.price.toLocaleString('en-IN')} (Squad Pass) • ${p.accessCount}`;
+  }
 
   const handleBookSelected = (e) => {
     e.preventDefault();
-    if (activeSelectedItem.isPass) {
-      onOpenBooking(activeSelectedItem.rawPass);
+    const preferences = {
+      preferredDate: selectedDate,
+      preferredSlot: selectedTimeSlot,
+      players: selectedPlayers,
+    };
+
+    if (selectorMode === 'games') {
+      if (isMultiGame) {
+        onOpenBooking({
+          id: CUSTOM_PASS_ID,
+          selectedGameIds: checkedGameIds,
+          name: `Custom Squad Pass (${checkedGameIds.length} Arenas)`,
+          ...preferences,
+        });
+      } else {
+        const g = GAMES.find(x => x.id === checkedGameIds[0]) || GAMES[0];
+        onOpenBooking({ ...g, ...preferences });
+      }
     } else {
-      onOpenBooking({
-        ...activeSelectedItem,
-        preferredDate: selectedDate,
-        preferredSlot: selectedTimeSlot,
-        players: selectedPlayers
-      });
+      const p = PASSES.find(x => x.id === selectedPassId) || PASSES[0];
+      onOpenBooking({ ...p, ...preferences });
     }
   };
 
@@ -98,8 +135,7 @@ export const Hero = ({ onOpenBooking }) => {
       <section 
         id="hero" 
         className="hero-editorial-fullscreen"
-        onMouseEnter={() => setIsPlaying(false)}
-        onMouseLeave={() => setIsPlaying(true)}
+        
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -120,7 +156,11 @@ export const Hero = ({ onOpenBooking }) => {
 
           {/* Floating Left/Right Navigation Arrows */}
           <button 
-            onClick={handlePrevSlide} 
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePrevSlide();
+            }} 
             className="carousel-nav-btn prev"
             aria-label="Previous Slide"
           >
@@ -128,7 +168,11 @@ export const Hero = ({ onOpenBooking }) => {
           </button>
 
           <button 
-            onClick={handleNextSlide} 
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNextSlide();
+            }} 
             className="carousel-nav-btn next"
             aria-label="Next Slide"
           >
@@ -171,12 +215,15 @@ export const Hero = ({ onOpenBooking }) => {
             </div>
 
             {/* Action Buttons & Slide Counter */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'flex-end' }}>
-              <div style={{ display: 'flex', gap: '0.85rem', flexWrap: 'wrap' }}>
+            <div className="hero-slide-actions-wrap">
+              <div className="hero-action-buttons-group">
                 <button 
-                  onClick={() => onOpenBooking(currentSlideGame)}
-                  className="btn-red"
-                  style={{ padding: '0.85rem 1.8rem', fontSize: '0.9rem' }}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenBooking(currentSlideGame);
+                  }}
+                  className="btn-red hero-main-cta"
                 >
                   <span>Book This Arena (₹{currentSlideGame.price})</span>
                   <ArrowRight size={16} />
@@ -184,8 +231,7 @@ export const Hero = ({ onOpenBooking }) => {
 
                 <a 
                   href="#available-booking" 
-                  className="btn-secondary"
-                  style={{ padding: '0.85rem 1.5rem', fontSize: '0.9rem' }}
+                  className="btn-secondary hero-sub-cta"
                 >
                   Select & Book Now
                 </a>
@@ -232,7 +278,7 @@ export const Hero = ({ onOpenBooking }) => {
          ========================================================================== */}
       <section id="available-booking" className="available-experiences-section">
         <div className="container">
-          {/* Header */}
+          {/* Header & Tabs */}
           <div className="experience-selector-header">
             <div>
               <div className="section-tag" style={{ color: 'var(--accent-red)' }}>Live Arena Availability</div>
@@ -240,73 +286,236 @@ export const Hero = ({ onOpenBooking }) => {
                 Select Available Game & Book Now
               </h2>
             </div>
-            <p style={{ maxWidth: '400px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              Click on any attraction below to select it, choose your squad size, and reserve instantly.
+            
+            {/* Mode Switcher Tabs */}
+            <div className="selector-tabs-pills">
+              <button
+                type="button"
+                onClick={() => setSelectorMode('games')}
+                className={`selector-tab-btn ${selectorMode === 'games' ? 'active' : ''}`}
+              >
+                <span>⚔️ Arena Attractions (6)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectorMode('passes')}
+                className={`selector-tab-btn ${selectorMode === 'passes' ? 'active' : ''}`}
+              >
+                <span>🎟️ Squad VIP Passes (3)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Subtitle & Live Volume Discount Notification */}
+          <div className="selector-sub-banner">
+            <p className="selector-sub-text">
+              {selectorMode === 'games'
+                ? 'Check one or more attractions to bundle your session. Adding multiple arenas activates volume discounts!'
+                : 'Choose an all-inclusive squad pass for multiple attractions and priority VIP access.'}
             </p>
+
+            {selectorMode === 'games' && (
+              <div className={`selector-discount-badge ${bundleDiscountRate > 0 ? 'active' : ''}`}>
+                {bundleDiscountRate > 0 ? (
+                  <>
+                    <Zap size={14} />
+                    <span><strong>{Math.round(bundleDiscountRate * 100)}% Squad Discount</strong> Checked & Active!</span>
+                  </>
+                ) : (
+                  <span>Check 2+ arenas to unlock <strong>15% to 25% OFF</strong></span>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* 6 Selectable Experience Cards Deck */}
-          <div className="experience-selector-grid">
-            {allSelectableItems.map((item) => {
-              const isSelected = selectedExperienceId === item.id;
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => setSelectedExperienceId(item.id)}
-                  className={`experience-selector-card ${isSelected ? 'selected' : ''}`}
-                >
-                  {/* Thumbnail Photo */}
-                  <div className="selector-card-thumb">
-                    <img src={item.image} alt={item.title} />
-                    <span className="selector-status-badge">
-                      <span className="status-live-dot" style={{ width: '5px', height: '5px' }} />
-                      <span>Available Today</span>
-                    </span>
+          {/* Minimalist 3-Step "How Battleship Works" Explainer */}
+          <motion.div 
+            className="how-it-works-banner"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-40px" }}
+            variants={{
+              hidden: { opacity: 0 },
+              visible: {
+                opacity: 1,
+                transition: { staggerChildren: 0.12 }
+              }
+            }}
+          >
+            <motion.div 
+              className="how-step-card"
+              variants={{
+                hidden: { opacity: 0, y: 14 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }
+              }}
+              whileHover={{ y: -3, transition: { duration: 0.18 } }}
+            >
+              <div className="how-step-num">01</div>
+              <div className="how-step-content">
+                <div className="how-step-title">Choose Your Arenas</div>
+                <div className="how-step-desc">Pick 1 arena or check multiple attractions (Laser Tag, Drift Cars, VR, Bowling).</div>
+              </div>
+            </motion.div>
+            <motion.div 
+              className="how-step-card"
+              variants={{
+                hidden: { opacity: 0, y: 14 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }
+              }}
+              whileHover={{ y: -3, transition: { duration: 0.18 } }}
+            >
+              <div className="how-step-num">02</div>
+              <div className="how-step-content">
+                <div className="how-step-title">Unlock Squad Savings</div>
+                <div className="how-step-desc">Checking 2+ arenas automatically activates 15% to 25% OFF per player.</div>
+              </div>
+            </motion.div>
+            <motion.div 
+              className="how-step-card"
+              variants={{
+                hidden: { opacity: 0, y: 14 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } }
+              }}
+              whileHover={{ y: -3, transition: { duration: 0.18 } }}
+            >
+              <div className="how-step-num">03</div>
+              <div className="how-step-content">
+                <div className="how-step-title">Instant WhatsApp Pass</div>
+                <div className="how-step-desc">Get your QR boarding pass instantly on WhatsApp. Show on Level 4 Nexus Mall and play!</div>
+              </div>
+            </motion.div>
+          </motion.div>
 
-                    {isSelected && (
-                      <div className="selector-check-icon">
-                        <Check size={12} />
+          {/* 1. ARENAS MODE: EXACTLY 6 BALANCED CARDS WITH CHECKBOXES */}
+          {selectorMode === 'games' ? (
+            <div className="experience-selector-grid">
+              {GAMES.map((game, idx) => {
+                const isChecked = checkedGameIds.includes(game.id);
+                return (
+                  <motion.div
+                    key={game.id}
+                    onClick={() => handleToggleGame(game.id)}
+                    className={`experience-selector-card ${isChecked ? 'selected' : ''}`}
+                    role="checkbox"
+                    aria-checked={isChecked}
+                    tabIndex={0}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: idx * 0.04, ease: [0.16, 1, 0.3, 1] }}
+                    whileHover={{ y: -4, transition: { duration: 0.18 } }}
+                    whileTap={{ scale: 0.98 }}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ' || e.key === 'Enter') {
+                        e.preventDefault();
+                        handleToggleGame(game.id);
+                      }
+                    }}
+                  >
+                    {/* Thumbnail Photo with Status Badge and Checkbox Icon */}
+                    <div className="selector-card-thumb">
+                      <img src={game.image} alt={game.title} />
+                      <span className="selector-status-badge">
+                        <span className="status-live-dot" style={{ width: '5px', height: '5px' }} />
+                        <span>Available Today</span>
+                      </span>
+
+                      <div className={`selector-checkbox-indicator ${isChecked ? 'checked' : ''}`}>
+                        <AnimatePresence>
+                          {isChecked && (
+                            <motion.div
+                              initial={{ scale: 0, rotate: -20 }}
+                              animate={{ scale: 1, rotate: 0 }}
+                              exit={{ scale: 0, rotate: 20 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                            >
+                              <Check size={12} strokeWidth={3} />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Title & Category */}
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--accent-red)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.15rem' }}>
-                      {item.tag || item.category}
                     </div>
-                    <div className="selector-card-title">
-                      {item.title}
-                    </div>
-                  </div>
 
-                  {/* Footer & Price */}
-                  <div className="selector-card-footer">
-                    <span>{item.duration}</span>
-                    <span className="selector-card-price">₹{item.price}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                    {/* Title & Category */}
+                    <div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--accent-red)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.15rem' }}>
+                        {game.tag || game.category}
+                      </div>
+                      <div className="selector-card-title">
+                        {game.title}
+                      </div>
+                    </div>
+
+                    {/* Footer & Price */}
+                    <div className="selector-card-footer">
+                      <span>{game.duration}</span>
+                      <span className="selector-card-price">₹{game.price}</span>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            /* 2. PASSES MODE: EXACTLY 3 BALANCED CARDS */
+            <div className="experience-passes-grid">
+              {PASSES.map((pass, idx) => {
+                const isSelected = selectedPassId === pass.id;
+                return (
+                  <motion.div
+                    key={pass.id}
+                    onClick={() => setSelectedPassId(pass.id)}
+                    className={`experience-pass-card ${isSelected ? 'selected' : ''}`}
+                    role="radio"
+                    aria-checked={isSelected}
+                    tabIndex={0}
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                    whileHover={{ y: -4, transition: { duration: 0.18 } }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <div className="experience-pass-header">
+                      <span className="experience-pass-tag">{pass.tag}</span>
+                      <div className={`selector-radio-indicator ${isSelected ? 'checked' : ''}`}>
+                        <AnimatePresence>
+                          {isSelected && (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              exit={{ scale: 0 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                            >
+                              <Check size={12} strokeWidth={3} />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                    <div className="experience-pass-name">{pass.name}</div>
+                    <div className="experience-pass-access">{pass.accessCount} · {pass.players}</div>
+                    <div className="experience-pass-price">₹{pass.price.toLocaleString('en-IN')}</div>
+                    <p className="experience-pass-desc">{pass.description}</p>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Dynamic Live "BOOK NOW" Controller Bar */}
           <form onSubmit={handleBookSelected} className="live-booking-control-bar">
             {/* Selected Game Details */}
             <div className="selected-game-banner">
-              <span className="selected-game-label">SELECTED EXPERIENCE</span>
-              <span className="selected-game-name">{activeSelectedItem.title}</span>
-              <span className="selected-game-specs">
-                ₹{activeSelectedItem.price} / player • {activeSelectedItem.duration}
-              </span>
+              <span className="selected-game-label">RESERVATION PREVIEW</span>
+              <span className="selected-game-name">{summaryLabel}</span>
+              <span className="selected-game-specs">{summarySpecs}</span>
             </div>
 
             {/* Date Picker */}
             <div className="booker-field">
               <label className="booker-label">Session Date</label>
-              <input 
-                type="date" 
-                value={selectedDate} 
+              <input
+                type="date"
+                value={selectedDate}
+                min={todayIST()}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="booker-input"
               />
@@ -346,14 +555,15 @@ export const Hero = ({ onOpenBooking }) => {
             </div>
 
             {/* Primary Action Button with Dynamic Price */}
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               type="submit" 
-              className="btn-red" 
-              style={{ padding: '0.9rem 1.8rem', height: '100%', minHeight: '52px', fontSize: '0.95rem' }}
+              className="btn-red booker-submit-btn" 
             >
               <Zap size={18} />
               <span>BOOK NOW (₹{calculatedTotal.toLocaleString()})</span>
-            </button>
+            </motion.button>
           </form>
         </div>
       </section>

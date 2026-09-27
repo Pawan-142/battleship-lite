@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# Environment — NEVER commit. Razorpay key secret lives here.
+.env
+.env.*
+!.env.example
+
+# Local booking store (server-owned data)
+data/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +30,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.claude/

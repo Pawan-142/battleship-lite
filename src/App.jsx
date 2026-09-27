@@ -5,28 +5,55 @@ import { Attractions } from './components/Attractions';
 import { PricingPasses } from './components/PricingPasses';
 import { VenueInfo } from './components/VenueInfo';
 import { Footer } from './components/Footer';
-import { QuickBookingModal } from './components/QuickBookingModal';
+import { BookingPage } from './components/BookingPage';
+import { MobileStickyBar } from './components/MobileStickyBar';
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('battleship-theme') || 'dark';
   });
 
-  const [bookingModalItem, setBookingModalItem] = useState(null);
-  const [isBookingOpen, setIsBookingOpen] = useState(false);
+  // Page Routing / Tab State ('home' or 'booking')
+  const [activeTab, setActiveTab] = useState(() => {
+    return window.location.hash === '#booking' ? 'booking' : 'home';
+  });
+  const [selectedBookingItem, setSelectedBookingItem] = useState(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('battleship-theme', theme);
   }, [theme]);
 
+  // Sync hash routing so browser Back / Forward buttons and bookmarks work seamlessly
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash;
+      if (hash === '#booking') {
+        setActiveTab('booking');
+      } else {
+        setActiveTab('home');
+      }
+    };
+
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
   const toggleTheme = () => {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
   const handleOpenBooking = (item = null) => {
-    setBookingModalItem(item);
-    setIsBookingOpen(true);
+    setSelectedBookingItem(item);
+    setActiveTab('booking');
+    window.location.hash = '#booking';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleBackToHome = () => {
+    setActiveTab('home');
+    window.location.hash = '#hero';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -35,26 +62,39 @@ export default function App() {
       <Navbar 
         theme={theme} 
         toggleTheme={toggleTheme} 
-        onOpenBooking={handleOpenBooking} 
+        activeTab={activeTab}
+        onNavigate={(tab) => {
+          if (tab === 'booking') {
+            handleOpenBooking(null);
+          } else {
+            handleBackToHome();
+          }
+        }}
       />
 
-      {/* Main Content */}
-      <main>
-        <Hero onOpenBooking={handleOpenBooking} />
-        <Attractions onOpenBooking={handleOpenBooking} />
-        <PricingPasses onOpenBooking={handleOpenBooking} />
-        <VenueInfo />
-      </main>
+      {/* Main Content: Full-Page Tab Routing */}
+      {activeTab === 'home' ? (
+        <main>
+          <Hero onOpenBooking={handleOpenBooking} />
+          <Attractions onOpenBooking={handleOpenBooking} />
+          <PricingPasses onOpenBooking={handleOpenBooking} />
+          <VenueInfo />
+        </main>
+      ) : (
+        <main>
+          <BookingPage 
+            initialItem={selectedBookingItem} 
+            onBackToHome={handleBackToHome} 
+          />
+        </main>
+      )}
 
       {/* Footer */}
       <Footer />
 
-      {/* Instant 2-Step Quick Booking Modal */}
-      {isBookingOpen && (
-        <QuickBookingModal 
-          initialItem={bookingModalItem} 
-          onClose={() => setIsBookingOpen(false)} 
-        />
+      {/* Mobile Sticky Booking Bar — only on Home overview */}
+      {activeTab === 'home' && (
+        <MobileStickyBar onOpenBooking={handleOpenBooking} />
       )}
     </div>
   );

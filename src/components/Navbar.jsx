@@ -1,21 +1,49 @@
 import { Sun, Moon, Sparkles } from 'lucide-react';
 
-export const Navbar = ({ theme, toggleTheme, onOpenBooking }) => {
+export const Navbar = ({ theme, toggleTheme, activeTab, onNavigate }) => {
   return (
     <header className="navbar-wrap">
       <div className="navbar-inner">
         {/* Brand */}
-        <a href="#hero" className="nav-brand">
+        <a 
+          href="#hero" 
+          onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
+          className="nav-brand"
+        >
           <div className="nav-brand-icon">B</div>
           <span>BATTLESHIP</span>
         </a>
 
         {/* Navigation Links */}
         <nav className="nav-links">
-          <a href="#attractions" className="nav-link-item">Attractions</a>
-          <a href="#passes" className="nav-link-item">Passes & Squads</a>
-          <a href="#custom-pass" className="nav-link-item">Customizer</a>
-          <a href="#venue" className="nav-link-item">The Space</a>
+          <a 
+            href="#attractions" 
+            onClick={() => onNavigate('home')} 
+            className="nav-link-item"
+          >
+            Attractions
+          </a>
+          <a 
+            href="#passes" 
+            onClick={() => onNavigate('home')} 
+            className="nav-link-item"
+          >
+            Passes & Squads
+          </a>
+          <a 
+            href="#custom-pass" 
+            onClick={() => onNavigate('home')} 
+            className="nav-link-item"
+          >
+            Customizer
+          </a>
+          <a 
+            href="#venue" 
+            onClick={() => onNavigate('home')} 
+            className="nav-link-item"
+          >
+            The Space
+          </a>
         </nav>
 
         {/* Actions */}
@@ -30,10 +58,10 @@ export const Navbar = ({ theme, toggleTheme, onOpenBooking }) => {
           </button>
 
           <button 
-            onClick={() => onOpenBooking(null)} 
+            onClick={() => onNavigate('booking')} 
             className="btn-red"
           >
-            Book Slot
+            {activeTab === 'booking' ? 'Arena Overview' : 'Book Slot'}
           </button>
         </div>
       </div>

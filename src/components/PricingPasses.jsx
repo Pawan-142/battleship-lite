@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Check, ArrowRight, ShieldCheck, Ticket } from 'lucide-react';
 import { PASSES } from '../data/passes';
 import { GAMES } from '../data/games';
+import { CUSTOM_PASS_ID, customPassPerPerson } from '../data/pricing';
 
 export const PricingPasses = ({ onOpenBooking }) => {
   // Custom Squad Pass Customizer State
@@ -9,22 +11,22 @@ export const PricingPasses = ({ onOpenBooking }) => {
   const [playerCount, setPlayerCount] = useState(4);
 
   const toggleGameSelection = (gameId) => {
-    setSelectedGames(prev => 
+    setSelectedGames(prev =>
       prev.includes(gameId)
         ? (prev.length > 1 ? prev.filter(id => id !== gameId) : prev) // keep at least 1
         : [...prev, gameId]
     );
   };
 
-  // Pricing formula for custom pass
-  const basePricePerPerson = selectedGames.reduce((acc, gId) => {
-    const g = GAMES.find(game => game.id === gId);
-    return acc + (g ? g.price : 0);
-  }, 0);
+  // Pricing comes from the shared module the server also uses, so the number
+  // previewed here is the number actually charged.
+  // Tiers: 15% for 2 games, 20% for 3, 25% for 4+. One game gets no discount.
+  const {
+    perPerson: discountedPerPerson,
+    base: basePricePerPerson,
+    rate: discountRate,
+  } = customPassPerPerson(selectedGames);
 
-  // 15% discount for 2 games, 20% for 3 games, 25% for 4+ games
-  const discountRate = selectedGames.length >= 4 ? 0.25 : (selectedGames.length === 3 ? 0.20 : 0.15);
-  const discountedPerPerson = Math.round(basePricePerPerson * (1 - discountRate));
   const customTotalPrice = discountedPerPerson * playerCount;
   const totalSavings = (basePricePerPerson * playerCount) - customTotalPrice;
 
@@ -44,10 +46,15 @@ export const PricingPasses = ({ onOpenBooking }) => {
 
         {/* 3-Column Luxury Boarding Passes */}
         <div className="passes-grid">
-          {PASSES.map((pass) => (
-            <div 
+          {PASSES.map((pass, idx) => (
+            <motion.div 
               key={pass.id} 
               className={`ticket-pass-card ${pass.popular ? 'highlighted' : ''}`}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.35, delay: idx * 0.08, ease: [0.16, 1, 0.3, 1] }}
+              whileHover={{ y: -6, transition: { duration: 0.18 } }}
             >
               {/* Ticket Top / Tear-off Header */}
               <div className="ticket-pass-header">
@@ -73,14 +80,16 @@ export const PricingPasses = ({ onOpenBooking }) => {
                   ))}
                 </ul>
 
-                <button 
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => onOpenBooking(pass)}
                   className={pass.popular ? "btn-red" : "btn-secondary"}
                   style={{ width: '100%', marginBottom: '1.25rem' }}
                 >
                   <span>Book {pass.name}</span>
                   <ArrowRight size={16} />
-                </button>
+                </motion.button>
 
                 {/* Barcode representation */}
                 <div className="ticket-barcode-footer">
@@ -103,7 +112,7 @@ export const PricingPasses = ({ onOpenBooking }) => {
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
 
@@ -121,7 +130,9 @@ export const PricingPasses = ({ onOpenBooking }) => {
               {GAMES.slice(0, 4).map((game) => {
                 const isSelected = selectedGames.includes(game.id);
                 return (
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.97 }}
                     key={game.id}
                     onClick={() => toggleGameSelection(game.id)}
                     className={`game-toggle-btn ${isSelected ? 'selected' : ''}`}
@@ -133,7 +144,7 @@ export const PricingPasses = ({ onOpenBooking }) => {
                     <span className="check-badge">
                       {isSelected ? <Check size={12} /> : '+'}
                     </span>
-                  </button>
+                  </motion.button>
                 );
               })}
             </div>
@@ -158,10 +169,14 @@ export const PricingPasses = ({ onOpenBooking }) => {
           {/* Generated Custom Pass Preview */}
           <div className="generated-ticket-preview">
             <div>
-              <div className="preview-pill">CUSTOM SQUAD BUNDLE • {Math.round(discountRate * 100)}% DISCOUNT</div>
+              <div className="preview-pill">
+                CUSTOM SQUAD BUNDLE
+                {discountRate > 0 ? ` • ${Math.round(discountRate * 100)}% DISCOUNT` : ' • ADD A GAME TO UNLOCK 15%'}
+              </div>
               <div className="preview-total">₹{customTotalPrice.toLocaleString()}</div>
               <div className="preview-per-person">
-                ₹{discountedPerPerson} per player (Save ₹{totalSavings.toLocaleString()} total)
+                ₹{discountedPerPerson} per player
+                {totalSavings > 0 ? ` (Save ₹${totalSavings.toLocaleString()} total)` : ''}
               </div>
 
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.5' }}>
@@ -171,21 +186,22 @@ export const PricingPasses = ({ onOpenBooking }) => {
               </div>
             </div>
 
-            <button 
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={() => onOpenBooking({
-                id: 'custom-pass',
-                name: `Custom ${selectedGames.length}-Game Squad Pass`,
-                price: discountedPerPerson,
-                totalCustomPrice: customTotalPrice,
+                id: CUSTOM_PASS_ID,
+                // The server re-derives the price from these two fields. Sending
+                // a price from the browser would let anyone name their own.
+                selectedGameIds: selectedGames,
                 players: playerCount,
-                selectedGamesCount: selectedGames.length
               })}
               className="btn-red"
               style={{ width: '100%' }}
             >
               <span>Book Custom Pass (₹{customTotalPrice.toLocaleString()})</span>
               <ArrowRight size={16} />
-            </button>
+            </motion.button>
           </div>
         </div>
       </div>
