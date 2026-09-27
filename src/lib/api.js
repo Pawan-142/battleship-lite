@@ -238,9 +238,8 @@ export async function openRazorpayCheckout({
   const Razorpay = await loadRazorpayCheckout();
 
   return new Promise((resolve, reject) => {
-    const rzp = new Razorpay({
-      key: keyId,
-      order_id: orderId,
+    const options = {
+      key: keyId || 'rzp_test_TgKF9kjF8nlbPG',
       amount: amountPaise,
       currency,
       name,
@@ -258,7 +257,13 @@ export async function openRazorpayCheckout({
           reject(err);
         },
       },
-    });
+    };
+
+    if (orderId && orderId.startsWith('order_') && !orderId.startsWith('order_sandbox_')) {
+      options.order_id = orderId;
+    }
+
+    const rzp = new Razorpay(options);
 
     rzp.on('payment.failed', (response) => {
       const err = new Error(response?.error?.description || 'Payment failed.');
