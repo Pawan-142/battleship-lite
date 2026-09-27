@@ -2403,9 +2403,15 @@ img {
    ========================================================================== */
 .booking-page-full-root {
   min-height: calc(100vh - 80px);
-  padding: 2.5rem 0 5rem;
+  padding: 6.75rem 0 5rem;
   background: var(--bg-primary);
   color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .booking-page-full-root {
+    padding-top: 5.5rem;
+  }
 }
 
 .booking-page-nav-bar {
