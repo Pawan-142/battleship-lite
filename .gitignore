@@ -18,7 +18,7 @@ dist-ssr
 !.env.example
 
 # Local booking store (server-owned data)
-data/
+/data/
 
 # Editor directories and files
 .vscode/*
