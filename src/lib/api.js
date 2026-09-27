@@ -239,7 +239,7 @@ export async function openRazorpayCheckout({
 
   return new Promise((resolve, reject) => {
     const options = {
-      key: keyId || 'rzp_test_TgKF9kjF8nlbPG',
+      key: keyId || 'rzp_test_ThAj1DL3VOR6NT',
       amount: amountPaise,
       currency,
       name,

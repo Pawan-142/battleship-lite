@@ -254,7 +254,7 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
     setPaying(true);
 
     try {
-      const keyId = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_TgKF9kjF8nlbPG';
+      const keyId = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_ThAj1DL3VOR6NT';
       const order = await createOrder(active.bookingId).catch(() => null);
 
       const result = await openRazorpayCheckout({
