@@ -310,40 +310,30 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
   return (
     <div className="booking-page-full-root animate-fade-in">
       <div className="container">
-        {/* Top Breadcrumb Navigation */}
-        <div className="booking-page-nav-bar">
-          <button 
-            type="button" 
-            onClick={onBackToHome} 
-            className="booking-back-btn"
-            id="btn-back-to-home"
-          >
-            <ArrowLeft size={16} />
-            <span>Back to Arena Overview</span>
-          </button>
-
-          <div className="booking-page-progress-pill">
-            <span className={step === 1 ? 'active' : ''}>1. Select Experiences & Squad</span>
-            <span>/</span>
-            <span className={step === 2 ? 'active' : ''}>2. Confirmed Boarding Pass</span>
+        {/* In-Page Step Indicator */}
+        <div className="booking-page-header-block">
+          <div className="booking-header-top-meta">
+            <span className="section-tag">
+              <Sparkles size={13} /> REAL-TIME ARENA RESERVATION
+            </span>
+            <div className="booking-page-progress-pill">
+              <span className={step === 1 ? 'active' : ''}>1. Select Experiences</span>
+              <span>/</span>
+              <span className={step === 2 ? 'active' : ''}>2. Boarding Pass</span>
+            </div>
           </div>
+          <h1 className="booking-page-main-heading">
+            Reserve Arena <span className="text-red">Slots</span>
+          </h1>
+          <p className="booking-page-sub-text">
+            Choose your arena experience or check multiple arenas to compose a custom squad combo pass with volume savings.
+          </p>
         </div>
 
         {step === 1 ? (
           <div className="booking-page-grid">
             {/* Left Column: Interactive Form & Experience Selector */}
             <div className="booking-page-form-col">
-              <div className="booking-page-header-block">
-                <span className="section-tag">
-                  <Sparkles size={13} /> REAL-TIME ARENA RESERVATION
-                </span>
-                <h1 className="booking-page-main-heading">
-                  Reserve Arena <span className="text-red">Slots</span>
-                </h1>
-                <p className="booking-page-sub-text">
-                  Choose your arena experience or check multiple arenas to compose a custom squad combo pass with volume savings.
-                </p>
-              </div>
 
               {/* Mode Switcher Tabs */}
               <div className="booking-tab-switcher">
