@@ -17,6 +17,10 @@ export const CUSTOM_PASS_ID = 'custom-pass';
 
 export const CURRENCY = 'INR';
 
+/** Owner-configured minimum advance deposit amount (in Rupees). Can be set/adjusted by the owner. Default: ₹50 */
+export const OWNER_MIN_ADVANCE_RUPEES = 50;
+export const OWNER_MIN_ADVANCE_PAISE = OWNER_MIN_ADVANCE_RUPEES * 100; // 5000 paise (₹50)
+
 /** Razorpay rejects orders below this. */
 export const MIN_AMOUNT_PAISE = 100;
 

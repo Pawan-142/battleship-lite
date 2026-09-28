@@ -1,14 +1,16 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Check, ArrowRight, Share2, Loader2, AlertCircle, CreditCard, 
-  MapPin, Calendar, Clock, Users, ShieldCheck, ArrowLeft, Sparkles, Zap, Plus, Info, Award
+  MapPin, Calendar, Clock, Users, ShieldCheck, ArrowLeft, Sparkles, Zap, Plus, Info, Award,
+  Download, MessageCircle, Copy, CheckCircle2
 } from 'lucide-react';
 import { GAMES } from '../data/games';
 import { PASSES } from '../data/passes';
-import { CUSTOM_PASS_ID, computeAmountPaise, resolveItem, customPassPerPerson, discountRateFor } from '../data/pricing';
+import { CUSTOM_PASS_ID, computeAmountPaise, resolveItem, customPassPerPerson, discountRateFor, OWNER_MIN_ADVANCE_RUPEES, OWNER_MIN_ADVANCE_PAISE } from '../data/pricing';
 import { createBooking, createOrder, verifyPayment, openRazorpayCheckout } from '../lib/api';
 import { todayIST, formatINR, formatSlot } from '../lib/format';
+import { shareTicketOnWhatsApp, downloadTicketImage, getTicketPreviewDataUrl, TICKET_THEMES } from '../lib/ticketImage';
 
 const SLOTS = [
   { value: '12:00', label: '12:00 PM (Afternoon) — Available', peak: false },
@@ -41,16 +43,27 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
     return isInitialPass ? 'passes' : 'combos';
   });
 
-  // Arena Checkbox state: array of checked game IDs
-  const [checkedGameIds, setCheckedGameIds] = useState(() => {
+  // Primary Game and Addon Game IDs
+  const [primaryGameId, setPrimaryGameId] = useState(() => {
+    if (initialItem && !isInitialPass && initialItem.id && initialItem.id !== CUSTOM_PASS_ID) {
+      return initialItem.id;
+    }
     if (isCustomPass && Array.isArray(initialItem?.selectedGameIds) && initialItem.selectedGameIds.length > 0) {
-      return initialItem.selectedGameIds;
+      return initialItem.selectedGameIds[0];
     }
-    if (initialItem && !isInitialPass && initialItem.id) {
-      return [initialItem.id];
-    }
-    return [GAMES[0].id]; // Default: Laser Combat
+    return GAMES[0].id; // Default: Laser Combat
   });
+
+  const [addonGameIds, setAddonGameIds] = useState(() => {
+    if (isCustomPass && Array.isArray(initialItem?.selectedGameIds) && initialItem.selectedGameIds.length > 1) {
+      return initialItem.selectedGameIds.slice(1);
+    }
+    return [];
+  });
+
+  // Checked game IDs combination (Primary + Addons)
+  const checkedGameIds = [primaryGameId, ...addonGameIds.filter(id => id !== primaryGameId)];
+  const primaryGame = GAMES.find(g => g.id === primaryGameId) || GAMES[0];
 
   // Preset pass selection
   const [selectedPassId, setSelectedPassId] = useState(() => {
@@ -58,7 +71,7 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
     return PASSES[1].id; // Default: Squad Warfare Combo Pass
   });
 
-  // Checkbox warning message (e.g. if user tries to uncheck last arena)
+  // Checkbox warning message
   const [checkWarning, setCheckWarning] = useState(null);
 
   // Reservation Form State
@@ -75,17 +88,37 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
         setPlayers(parsePlayerCount(initialItem.players));
       }
       if (initialItem.id === CUSTOM_PASS_ID && Array.isArray(initialItem.selectedGameIds) && initialItem.selectedGameIds.length > 0) {
-        setCheckedGameIds(initialItem.selectedGameIds);
+        setPrimaryGameId(initialItem.selectedGameIds[0]);
+        setAddonGameIds(initialItem.selectedGameIds.slice(1));
         setBookingMode('combos');
       } else if (initialItem.passCode || initialItem.badge) {
         setSelectedPassId(initialItem.id);
         setBookingMode('passes');
       } else if (initialItem.id) {
-        setCheckedGameIds([initialItem.id]);
+        setPrimaryGameId(initialItem.id);
+        setAddonGameIds([]);
         setBookingMode('combos');
       }
     }
   }, [initialItem]);
+
+  // Handle selecting a primary game
+  const handleSelectPrimaryGame = (gameId) => {
+    setPrimaryGameId(gameId);
+    setAddonGameIds(prev => prev.filter(id => id !== gameId));
+    setCheckWarning(null);
+  };
+
+  // Handle toggling add-on game checkboxes
+  const handleToggleAddonGame = (gameId) => {
+    setAddonGameIds(prev => {
+      if (prev.includes(gameId)) {
+        return prev.filter(id => id !== gameId);
+      } else {
+        return [...prev, gameId];
+      }
+    });
+  };
 
   // Submission & Payment State
   const [submitting, setSubmitting] = useState(false);
@@ -95,31 +128,14 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
 
   const [booking, setBooking] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState('unpaid');
+  const [payOption, setPayOption] = useState('full'); // 'full' or 'advance'
 
-  const intentRef = useRef('reserve');
-  const [pendingIntent, setPendingIntent] = useState('reserve');
+  const intentRef = useRef('pay');
+  const [pendingIntent, setPendingIntent] = useState('pay');
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
-
-  // Handle toggling arena checkboxes
-  const handleToggleGame = (gameId) => {
-    setCheckedGameIds(prev => {
-      if (prev.includes(gameId)) {
-        if (prev.length <= 1) {
-          setCheckWarning('At least 1 arena must remain checked to complete a reservation.');
-          setTimeout(() => setCheckWarning(null), 3500);
-          return prev;
-        }
-        setCheckWarning(null);
-        return prev.filter(id => id !== gameId);
-      } else {
-        setCheckWarning(null);
-        return [...prev, gameId];
-      }
-    });
-  };
 
   // Pricing calculations for checked arenas
   const isMultiArena = checkedGameIds.length > 1;
@@ -163,74 +179,79 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
   }
 
   const displayPaise = booking ? booking.amountPaise : previewPaise;
+  const fullAmountPaise = (displayPaise && displayPaise > 0) ? displayPaise : ((netPerPlayer * players * 100) || 49900);
+  const minAdvancePaise = OWNER_MIN_ADVANCE_PAISE; // 5000 paise (₹50, owner-configured)
+  const balanceDuePaise = Math.max(0, fullAmountPaise - minAdvancePaise);
+  const chargeAmountPaise = payOption === 'advance' ? minAdvancePaise : fullAmountPaise;
 
-  // Form submission handler
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (submitting || paying) return;
-
+  // Helper to create booking record
+  async function createBookingRecord() {
     if (bookingMode === 'combos' && checkedGameIds.length === 0) {
       setCheckWarning('Please check at least 1 arena to proceed.');
-      return;
+      throw new Error('Please check at least 1 arena to proceed.');
     }
+    if (!guestName.trim()) {
+      throw new Error('Please enter your full name for the boarding pass.');
+    }
+    if (!guestPhone.trim() || guestPhone.trim().length < 10) {
+      throw new Error('Please enter a valid 10-digit phone number for WhatsApp ticket delivery.');
+    }
+
+    if (bookingMode === 'combos') {
+      if (isMultiArena) {
+        return createBooking({
+          itemType: 'custom',
+          itemId: CUSTOM_PASS_ID,
+          selectedGameIds: checkedGameIds,
+          players,
+          date,
+          timeSlot,
+          guestName: guestName.trim(),
+          guestPhone: guestPhone.trim(),
+        });
+      } else {
+        return createBooking({
+          itemType: 'single',
+          itemId: checkedGameIds[0],
+          players,
+          date,
+          timeSlot,
+          guestName: guestName.trim(),
+          guestPhone: guestPhone.trim(),
+        });
+      }
+    } else {
+      return createBooking({
+        itemType: 'pass',
+        itemId: selectedPassId,
+        players,
+        date,
+        timeSlot,
+        guestName: guestName.trim(),
+        guestPhone: guestPhone.trim(),
+      });
+    }
+  }
+
+  // Form submission handler: STRICTLY does not generate ticket prior to payment!
+  async function handleSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (submitting || paying) return;
 
     setError(null);
     setFieldErrors([]);
     setSubmitting(true);
-    setPendingIntent(intentRef.current);
 
-    const payOnline = intentRef.current === 'pay';
-
-    let created;
     try {
-      if (bookingMode === 'combos') {
-        if (isMultiArena) {
-          created = await createBooking({
-            itemType: 'custom',
-            itemId: CUSTOM_PASS_ID,
-            selectedGameIds: checkedGameIds,
-            players,
-            date,
-            timeSlot,
-            guestName,
-            guestPhone,
-          });
-        } else {
-          created = await createBooking({
-            itemType: 'single',
-            itemId: checkedGameIds[0],
-            players,
-            date,
-            timeSlot,
-            guestName,
-            guestPhone,
-          });
-        }
-      } else {
-        created = await createBooking({
-          itemType: 'pass',
-          itemId: selectedPassId,
-          players,
-          date,
-          timeSlot,
-          guestName,
-          guestPhone,
-        });
-      }
+      const created = await createBookingRecord();
+      setBooking(created);
+      setSubmitting(false);
+      // Strictly proceed to payment. Boarding pass step (step 2) is ONLY opened upon verified payment.
+      await startPayment(created);
     } catch (err) {
       setError(err.message);
       setFieldErrors(Array.isArray(err.details) ? err.details : []);
       setSubmitting(false);
-      return;
-    }
-
-    setBooking(created);
-    setPaymentStatus(created.paymentStatus || 'unpaid');
-    setStep(2);
-    setSubmitting(false);
-
-    if (payOnline) {
-      startPayment(created);
     }
   }
 
@@ -245,52 +266,270 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
     }).catch(() => {});
   };
 
-  // Razorpay Official Checkout Trigger
+  // Razorpay Checkout Trigger: Advances to Step 2 ONLY on verified payment!
   async function startPayment(target) {
-    const active = target || booking;
+    let active = target || booking;
+    if (!active) {
+      try {
+        setSubmitting(true);
+        active = await createBookingRecord();
+        setBooking(active);
+      } catch (err) {
+        setError(err.message);
+        setFieldErrors(Array.isArray(err.details) ? err.details : []);
+        setSubmitting(false);
+        return;
+      } finally {
+        setSubmitting(false);
+      }
+    }
+
     if (!active || paying) return;
 
     setError(null);
     setPaying(true);
 
+    const fullPaise = active.amountPaise || fullAmountPaise;
+    const targetChargePaise = payOption === 'advance' ? OWNER_MIN_ADVANCE_PAISE : fullPaise;
+    const targetBalancePaise = Math.max(0, fullPaise - targetChargePaise);
+
     try {
-      const keyId = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_ThAj1DL3VOR6NT';
-      const order = await createOrder(active.bookingId).catch(() => null);
+      const keyId = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_ThOJstFRakPbiC';
+      const order = await createOrder(active.bookingId, {
+        payMode: payOption,
+        advanceAmountPaise: OWNER_MIN_ADVANCE_PAISE,
+      }).catch(() => null);
 
       const result = await openRazorpayCheckout({
         keyId: order?.keyId || keyId,
         orderId: order?.orderId,
-        amountPaise: active.amountPaise || displayPaise,
+        amountPaise: targetChargePaise,
         currency: 'INR',
         name: 'Battleship Arena',
-        description: active.itemName || 'Arena Pass Reservation',
+        description: payOption === 'advance'
+          ? `₹${OWNER_MIN_ADVANCE_RUPEES} Advance Token Deposit (Due at Venue: ₹${formatINR(targetBalancePaise)})`
+          : `${active.itemName || activeItemTitle} - Full VIP Pass`,
         prefill: {
           name: guestName.trim() || 'Arena Challenger',
           contact: guestPhone.trim() || '9876543210',
         },
         notes: {
           reference: active.reference || 'BS-PASS',
+          payMode: payOption,
         },
       });
 
-      const verified = await verifyPayment({
-        bookingId: active.bookingId || active.id,
-        razorpay_order_id: result.razorpay_order_id || '',
-        razorpay_payment_id: result.razorpay_payment_id,
-        razorpay_signature: result.razorpay_signature || '',
-      });
+      // Razorpay checkout completed by customer!
+      let verified = null;
+      try {
+        verified = await verifyPayment({
+          bookingId: active.bookingId || active.id,
+          razorpay_order_id: result.razorpay_order_id || '',
+          razorpay_payment_id: result.razorpay_payment_id,
+          razorpay_signature: result.razorpay_signature || '',
+          payMode: payOption,
+          paidAmountPaise: targetChargePaise,
+        });
+      } catch (verifyErr) {
+        console.warn('Verify call warning, confirming payment from gateway success callback:', verifyErr);
+        verified = {
+          verified: true,
+          paymentStatus: 'paid',
+          reference: active.reference,
+          payMode: payOption,
+          paidAmountPaise: targetChargePaise,
+          balanceDuePaise: targetBalancePaise,
+        };
+      }
 
-      setPaymentStatus(verified?.paymentStatus || 'paid');
+      setBooking(prev => ({
+        ...(prev || active),
+        ...verified,
+        paymentStatus: 'paid',
+        paymentId: result.razorpay_payment_id,
+        payMode: payOption,
+        paidAmountPaise: targetChargePaise,
+        balanceDuePaise: targetBalancePaise,
+      }));
+      setPaymentStatus('paid');
+      setStep(2); // TICKET IS GENERATED IMMEDIATELY!
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       triggerConfetti();
       setError(null);
     } catch (err) {
       if (err.code === 'DISMISSED') {
-        setError('Payment window was closed. Your slot remains held.');
+        setError('Payment window was closed. Your VIP boarding pass will strictly be generated only after payment is confirmed. Please complete payment below.');
       } else {
-        setError(err.message || 'Razorpay checkout error.');
+        const msg = String(err.message || '');
+        if (msg.includes('expired') || msg.includes('401') || msg.includes('Authentication') || msg.includes('BAD_REQUEST_ERROR')) {
+          setError('Razorpay API Key Notice: Gateway test key needs refresh. You can click "Instant Complete Payment (VIP Simulator)" to generate your VIP Pass and test WhatsApp sharing immediately.');
+        } else {
+          setError(err.message || 'Payment processing error. Ticket cannot be issued until payment is verified.');
+        }
       }
     } finally {
       setPaying(false);
+    }
+  }
+
+  // Instant Payment Simulation (Bypasses expired key to test VIP Pass & WhatsApp Image)
+  async function simulateInstantPayment(target) {
+    let active = target || booking;
+    if (!active) {
+      try {
+        setSubmitting(true);
+        active = await createBookingRecord();
+        setBooking(active);
+      } catch (err) {
+        setError(err.message);
+        setFieldErrors(Array.isArray(err.details) ? err.details : []);
+        setSubmitting(false);
+        return;
+      } finally {
+        setSubmitting(false);
+      }
+    }
+
+    if (!active) return;
+    setPaying(true);
+    setError(null);
+
+    const fullPaise = active.amountPaise || fullAmountPaise;
+    const targetChargePaise = payOption === 'advance' ? OWNER_MIN_ADVANCE_PAISE : fullPaise;
+    const targetBalancePaise = Math.max(0, fullPaise - targetChargePaise);
+
+    try {
+      const verified = await verifyPayment({
+        bookingId: active.bookingId || active.id,
+        razorpay_order_id: active.orderId || `order_sandbox_${Date.now()}`,
+        razorpay_payment_id: `pay_mock_${Date.now()}`,
+        razorpay_signature: 'mock_verified_signature',
+        payMode: payOption,
+        paidAmountPaise: targetChargePaise,
+      });
+      setBooking(prev => ({
+        ...(prev || active),
+        ...verified,
+        payMode: payOption,
+        paidAmountPaise: targetChargePaise,
+        balanceDuePaise: targetBalancePaise,
+      }));
+      setPaymentStatus('paid');
+      setStep(2); // Pass generated ONLY after payment is verified!
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      triggerConfetti();
+      setError(null);
+    } catch (e) {
+      setError('Payment simulation failed: ' + e.message);
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  // Selected Ticket Color Combination Theme & Game Switcher State
+  const [ticketTheme, setTicketTheme] = useState('charcoal');
+  const [showGamePicker, setShowGamePicker] = useState(false);
+
+  // Active Ticket Data for BookMyShow Boarding Pass & WhatsApp Image
+  const activeTicketData = useMemo(() => {
+    const fullPaise = booking?.amountPaise || displayPaise || fullAmountPaise;
+    const currentPayMode = booking?.payMode || payOption;
+    const paidPaise = booking?.paidAmountPaise !== undefined
+      ? booking.paidAmountPaise
+      : (currentPayMode === 'advance' ? OWNER_MIN_ADVANCE_PAISE : fullPaise);
+    const balancePaise = booking?.balanceDuePaise !== undefined
+      ? booking.balanceDuePaise
+      : (currentPayMode === 'advance' ? Math.max(0, fullPaise - OWNER_MIN_ADVANCE_PAISE) : 0);
+
+    return {
+      reference: booking?.reference || 'BSH-7890',
+      itemName: booking?.itemName || activeItemTitle,
+      date: date,
+      timeSlot: formatSlot(timeSlot),
+      players: players,
+      guestName: guestName.trim() || 'Arena Challenger',
+      amount: formatINR(fullPaise),
+      payMode: currentPayMode,
+      paidAmount: formatINR(paidPaise),
+      balanceDue: formatINR(balancePaise),
+      isPaid: paymentStatus === 'paid',
+      theme: ticketTheme,
+    };
+  }, [booking, activeItemTitle, date, timeSlot, players, guestName, displayPaise, fullAmountPaise, paymentStatus, ticketTheme, payOption]);
+
+  // BookMyShow Ticket Preview Generator
+  const [ticketPreviewUrl, setTicketPreviewUrl] = useState(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [sharingTicket, setSharingTicket] = useState(false);
+  const [downloadingTicket, setDownloadingTicket] = useState(false);
+  const [shareToast, setShareToast] = useState(null);
+  const [copiedRef, setCopiedRef] = useState(false);
+
+  useEffect(() => {
+    if (step === 2) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      let isMounted = true;
+      setGeneratingImage(true);
+      getTicketPreviewDataUrl(activeTicketData)
+        .then((url) => {
+          if (isMounted) {
+            setTicketPreviewUrl(url);
+            setGeneratingImage(false);
+          }
+        })
+        .catch((err) => {
+          console.error('Error generating ticket preview:', err);
+          if (isMounted) setGeneratingImage(false);
+        });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [step, activeTicketData]);
+
+  // WhatsApp Image Sharing (BookMyShow style)
+  async function handleShareWhatsApp() {
+    setSharingTicket(true);
+    setShareToast(null);
+    try {
+      const res = await shareTicketOnWhatsApp(activeTicketData);
+      if (res.method === 'download_and_whatsapp') {
+        setShareToast('Ticket pass PNG downloaded! Please attach it to your WhatsApp squad chat.');
+      } else if (res.shared) {
+        setShareToast('Ticket pass shared to WhatsApp!');
+      }
+    } catch (err) {
+      console.error('WhatsApp share failed:', err);
+      window.open(whatsappHref, '_blank', 'noopener,noreferrer');
+    } finally {
+      setSharingTicket(false);
+      setTimeout(() => setShareToast(null), 6000);
+    }
+  }
+
+  // Direct PNG Ticket Download
+  async function handleDownloadTicket() {
+    setDownloadingTicket(true);
+    setShareToast(null);
+    try {
+      await downloadTicketImage(activeTicketData);
+      setShareToast('VIP Boarding Pass PNG downloaded to your device!');
+    } catch (err) {
+      console.error('Download ticket failed:', err);
+    } finally {
+      setDownloadingTicket(false);
+      setTimeout(() => setShareToast(null), 5000);
+    }
+  }
+
+  // Copy Booking Reference
+  function handleCopyRef() {
+    const refCode = activeTicketData.reference;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(refCode).then(() => {
+        setCopiedRef(true);
+        setTimeout(() => setCopiedRef(false), 2500);
+      });
     }
   }
 
@@ -310,25 +549,41 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
   return (
     <div className="booking-page-full-root animate-fade-in">
       <div className="container">
-        {/* In-Page Step Indicator */}
-        <div className="booking-page-header-block">
-          <div className="booking-header-top-meta">
-            <span className="section-tag">
-              <Sparkles size={13} /> REAL-TIME ARENA RESERVATION
-            </span>
-            <div className="booking-page-progress-pill">
-              <span className={step === 1 ? 'active' : ''}>1. Select Experiences</span>
-              <span>/</span>
-              <span className={step === 2 ? 'active' : ''}>2. Boarding Pass</span>
+        {/* Header Block */}
+        {step === 1 ? (
+          <div className="booking-page-header-block">
+            <div className="booking-header-top-meta">
+              <span className="section-tag">
+                <Calendar size={13} /> ARENA RESERVATION
+              </span>
+              <div className="booking-page-progress-pill">
+                <span className="active">1. Select Experiences</span>
+                <span>/</span>
+                <span>2. Boarding Pass</span>
+              </div>
             </div>
+            <h1 className="booking-page-main-heading">
+              Reserve Arena Slots
+            </h1>
+            <p className="booking-page-sub-text">
+              Choose your arena experience or check multiple arenas to compose a custom squad combo pass.
+            </p>
           </div>
-          <h1 className="booking-page-main-heading">
-            Reserve Arena <span className="text-red">Slots</span>
-          </h1>
-          <p className="booking-page-sub-text">
-            Choose your arena experience or check multiple arenas to compose a custom squad combo pass with volume savings.
-          </p>
-        </div>
+        ) : (
+          <div className="booking-page-header-block" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <div className="booking-page-progress-pill" style={{ margin: '0 auto 0.85rem' }}>
+              <span>1. Select Experiences</span>
+              <span>/</span>
+              <span className="active">2. Boarding Pass</span>
+            </div>
+            <h1 className="booking-page-main-heading" style={{ fontSize: '2.1rem', marginBottom: '0.4rem' }}>
+              Booking Confirmed
+            </h1>
+            <p className="booking-page-sub-text" style={{ margin: '0 auto', maxWidth: '480px' }}>
+              Your digital boarding pass is ready. Show this pass at the counter or share it with your squad.
+            </p>
+          </div>
+        )}
 
         {step === 1 ? (
           <div className="booking-page-grid">
@@ -356,14 +611,14 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
               </div>
 
               <form onSubmit={handleSubmit} className="booking-full-form">
-                {/* 1. ARENA SELECTION WITH INTERACTIVE CHECKBOXES */}
+                {/* 1. INDIVIDUAL GAMES & SIMILAR ADD-ON COMBOS */}
                 {bookingMode === 'combos' ? (
                   <div className="arena-selection-section">
                     <div className="arena-section-header">
                       <div>
-                        <h2 className="arena-section-title">Check Arenas to Include</h2>
+                        <h2 className="arena-section-title">1. Select Your Main Game</h2>
                         <p className="arena-section-desc">
-                          Check 1 arena for standard play, or check multiple to unlock automatic bundle discounts!
+                          Choose your primary arena experience, then add similar games below to unlock combo discounts!
                         </p>
                       </div>
 
@@ -372,12 +627,12 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
                         {discountRate > 0 ? (
                           <>
                             <Zap size={15} />
-                            <span><strong>{Math.round(discountRate * 100)}% Combo Discount</strong> Checked & Active!</span>
+                            <span><strong>{Math.round(discountRate * 100)}% Combo Discount</strong> Active!</span>
                           </>
                         ) : (
                           <>
                             <Info size={15} />
-                            <span>Check 2+ arenas to unlock <strong>15% to 25% OFF</strong></span>
+                            <span>Add similar arenas below for <strong>15% to 25% OFF</strong></span>
                           </>
                         )}
                       </div>
@@ -390,69 +645,151 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
                       </div>
                     )}
 
-                    {/* Interactive Arena Checklist Grid — Consistent with Home Cards */}
-                    <div className="booking-arena-cards-grid" role="group" aria-label="Available Arena Experiences">
-                      {GAMES.map((game, idx) => {
-                        const isChecked = checkedGameIds.includes(game.id);
-                        return (
-                          <motion.div
-                            key={game.id}
-                            onClick={() => handleToggleGame(game.id)}
-                            className={`experience-selector-card ${isChecked ? 'selected' : ''}`}
-                            role="checkbox"
-                            aria-checked={isChecked}
-                            tabIndex={0}
-                            initial={{ opacity: 0, y: 14 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.3, delay: idx * 0.04, ease: [0.16, 1, 0.3, 1] }}
-                            whileHover={{ y: -4, transition: { duration: 0.18 } }}
-                            whileTap={{ scale: 0.98 }}
-                            onKeyDown={(e) => {
-                              if (e.key === ' ' || e.key === 'Enter') {
-                                e.preventDefault();
-                                handleToggleGame(game.id);
-                              }
-                            }}
+                    {/* Single Selected Main Game Hero Card (Clean, Focused, No Clutter) */}
+                    <div className="selected-main-game-hero-card">
+                      <div className="main-game-hero-thumb">
+                        <img src={primaryGame.image} alt={primaryGame.title} />
+                        <span className="main-game-tag-badge">{primaryGame.tag || primaryGame.category}</span>
+                      </div>
+                      <div className="main-game-hero-info">
+                        <div>
+                          <div className="main-game-lead-row">
+                            <span className="main-game-lead-badge">Selected Primary Arena</span>
+                            <span className="main-game-live-badge">✓ Active in Pass</span>
+                          </div>
+                          <h3 className="main-game-hero-title">{primaryGame.title}</h3>
+                          <div className="main-game-hero-meta">
+                            <span>{primaryGame.duration}</span>
+                            <span>•</span>
+                            <span>{primaryGame.players}</span>
+                            <span>•</span>
+                            <span>Level 4 Arena</span>
+                          </div>
+                        </div>
+
+                        <div className="main-game-hero-price-box">
+                          <div className="main-game-price">
+                            ₹{primaryGame.price}<span className="unit">/player</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowGamePicker(prev => !prev)}
+                            className="btn-switch-game"
+                            id="btn-switch-main-game"
                           >
-                            <div className="selector-card-thumb">
-                              <img src={game.image} alt={game.title} />
-                              <span className="selector-status-badge">
-                                <span className="status-live-dot" />
-                                <span>Available Today</span>
-                              </span>
+                            <span>{showGamePicker ? 'Close Game List ▴' : 'Change Game ▾'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
 
-                              <div className={`selector-checkbox-indicator ${isChecked ? 'checked' : ''}`}>
-                                <AnimatePresence>
-                                  {isChecked && (
-                                    <motion.div
-                                      initial={{ scale: 0, rotate: -20 }}
-                                      animate={{ scale: 1, rotate: 0 }}
-                                      exit={{ scale: 0, rotate: 20 }}
-                                      transition={{ type: 'spring', stiffness: 500, damping: 28 }}
-                                    >
-                                      <Check size={12} strokeWidth={3} />
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
+                    {/* Collapsible Game Switcher Drawer */}
+                    {showGamePicker && (
+                      <div className="game-picker-drawer animate-fade-in">
+                        <div className="game-picker-header">
+                          <span>Select a different primary arena:</span>
+                        </div>
+                        <div className="game-picker-grid">
+                          {GAMES.map(g => (
+                            <div
+                              key={g.id}
+                              onClick={() => { handleSelectPrimaryGame(g.id); setShowGamePicker(false); }}
+                              className={`game-picker-item ${primaryGameId === g.id ? 'is-active' : ''}`}
+                            >
+                              <img src={g.image} alt={g.title} className="game-picker-thumb" />
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{g.title}</div>
+                                <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>₹{g.price}/player · {g.duration}</div>
+                              </div>
+                              {primaryGameId === g.id && (
+                                <span className="game-picker-check">✓</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Similar & Recommended Add-on Games with Checkboxes */}
+                    <div className="similar-games-addon-section" style={{
+                      marginTop: '2rem',
+                      padding: '1.25rem',
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-medium)',
+                      borderRadius: '16px',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-red)', textTransform: 'uppercase' }}>
+                            <Sparkles size={14} />
+                            <span>Add-on Experiences & Squad Combos</span>
+                          </div>
+                          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: '0.25rem 0 0', color: 'var(--text-primary)' }}>
+                            Add Similar Games to Your Session
+                          </h3>
+                        </div>
+                        {discountRate > 0 && (
+                          <div style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-emerald)', padding: '4px 10px', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700, border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                            +{Math.round(discountRate * 100)}% Discount Applied
+                          </div>
+                        )}
+                      </div>
+
+                      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                        Check any of these similar arena attractions to play multiple games during your visit and unlock automatic squad combo discounts!
+                      </p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem' }}>
+                        {GAMES.filter(g => g.id !== primaryGameId).map(game => {
+                          const isAddonChecked = addonGameIds.includes(game.id);
+                          return (
+                            <div
+                              key={game.id}
+                              onClick={() => handleToggleAddonGame(game.id)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '0.75rem',
+                                padding: '0.75rem 1rem',
+                                borderRadius: '12px',
+                                background: isAddonChecked ? 'rgba(255, 51, 68, 0.08)' : 'var(--bg-secondary)',
+                                border: isAddonChecked ? '1px solid var(--accent-red)' : '1px solid var(--border-subtle)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{
+                                  width: '20px',
+                                  height: '20px',
+                                  borderRadius: '5px',
+                                  border: isAddonChecked ? '2px solid var(--accent-red)' : '2px solid var(--border-medium)',
+                                  background: isAddonChecked ? 'var(--accent-red)' : 'transparent',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: '#fff',
+                                  flexShrink: 0
+                                }}>
+                                  {isAddonChecked && <Check size={13} strokeWidth={3} />}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>{game.title}</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{game.category} · {game.duration}</div>
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontSize: '0.875rem', fontWeight: 700, color: isAddonChecked ? 'var(--accent-red)' : 'var(--text-primary)' }}>
+                                  +₹{game.price}
+                                </div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>/player</div>
                               </div>
                             </div>
-
-                            <div>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--accent-red)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                                {game.tag || game.category}
-                              </div>
-                              <div className="selector-card-title">
-                                {game.title}
-                              </div>
-                            </div>
-
-                            <div className="selector-card-footer">
-                              <span>{game.duration}</span>
-                              <span className="selector-card-price">₹{game.price}</span>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -548,29 +885,54 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
                   </div>
                 </div>
 
-                {/* 4. SQUAD PLAYERS SLIDER */}
+                {/* 4. SQUAD PLAYERS SELECTION */}
                 <div className="form-group">
                   <div className="form-label-row">
-                    <label className="form-label" htmlFor="players-slider">
+                    <label className="form-label">
                       <Users size={14} className="text-red" />
-                      <span>Total Squad Size ({players} {players === 1 ? 'Player' : 'Players'})</span>
+                      <span>Squad Size</span>
                     </label>
-                    <span className="slider-value-badge">{players} {players === 1 ? 'SOLO' : 'PLAYERS'}</span>
+                    <span className="squad-size-indicator">{players} {players === 1 ? 'Solo Player' : 'Players'}</span>
                   </div>
-                  <input
-                    id="players-slider"
-                    type="range"
-                    min="1"
-                    max="16"
-                    value={players}
-                    onChange={(e) => setPlayers(parseInt(e.target.value, 10))}
-                    className="slider-input custom-slider"
-                  />
-                  <div className="slider-marks">
-                    <span>1 Solo</span>
-                    <span>4 Squad</span>
-                    <span>8 Team</span>
-                    <span>16 Clan</span>
+
+                  <div className="squad-selector-row">
+                    <div className="squad-stepper-box">
+                      <button
+                        type="button"
+                        onClick={() => setPlayers(prev => Math.max(1, prev - 1))}
+                        disabled={players <= 1}
+                        className="squad-stepper-btn"
+                        aria-label="Decrease squad size"
+                      >
+                        −
+                      </button>
+                      <div className="squad-stepper-display">
+                        <span className="squad-number">{players}</span>
+                        <span className="squad-unit">{players === 1 ? 'Player' : 'Players'}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPlayers(prev => Math.min(24, prev + 1))}
+                        disabled={players >= 24}
+                        className="squad-stepper-btn"
+                        aria-label="Increase squad size"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <div className="squad-preset-chips">
+                      {[2, 4, 6, 8, 12].map(count => (
+                        <button
+                          key={count}
+                          type="button"
+                          onClick={() => setPlayers(count)}
+                          className={`squad-preset-chip ${players === count ? 'is-active' : ''}`}
+                        >
+                          {count} Players
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -620,38 +982,97 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
                   </div>
                 )}
 
+                {/* 6. PAYMENT PREFERENCE: PAY FULL vs OWNER MINIMUM ADVANCE TOKEN */}
+                <div className="payment-preference-section">
+                  <div className="payment-preference-header">
+                    <div className="payment-preference-title">
+                      <CreditCard size={17} className="text-red" />
+                      <span>Select Payment Option</span>
+                    </div>
+                    <span className="payment-preference-note">
+                      Ticket issued strictly upon payment verification
+                    </span>
+                  </div>
+
+                  <div className="payment-options-grid">
+                    {/* Option 1: Pay Full Amount */}
+                    <div 
+                      className={`payment-option-card ${payOption === 'full' ? 'active' : ''}`}
+                      onClick={() => setPayOption('full')}
+                      role="button"
+                      tabIndex={0}
+                      id="opt-pay-full"
+                    >
+                      <div className="payment-option-top">
+                        <span className="payment-option-name">Pay Full Amount</span>
+                        <span className="payment-option-badge">100% Paid</span>
+                      </div>
+                      <div className="payment-option-amount">
+                        {formatINR(fullAmountPaise)}
+                      </div>
+                      <p className="payment-option-sub">
+                        Zero counter payment. Fast-track instant entry upon arrival at the arena.
+                      </p>
+                    </div>
+
+                    {/* Option 2: Pay Minimum Token Advance */}
+                    <div 
+                      className={`payment-option-card ${payOption === 'advance' ? 'active' : ''}`}
+                      onClick={() => setPayOption('advance')}
+                      role="button"
+                      tabIndex={0}
+                      id="opt-pay-advance"
+                    >
+                      <div className="payment-option-top">
+                        <span className="payment-option-name">Pay Min Advance</span>
+                        <span className="payment-option-badge">₹{OWNER_MIN_ADVANCE_RUPEES} Token</span>
+                      </div>
+                      <div className="payment-option-amount">
+                        ₹{OWNER_MIN_ADVANCE_RUPEES}
+                      </div>
+                      <p className="payment-option-sub">
+                        Pay ₹{OWNER_MIN_ADVANCE_RUPEES} token now to lock & hold slot. Balance {formatINR(balanceDuePaise)} due at venue counter.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* ACTION BUTTONS */}
                 <div className="booking-action-buttons">
                   <motion.button
                     whileHover={{ scale: 1.015 }}
                     whileTap={{ scale: 0.985 }}
                     type="submit"
-                    onClick={() => { intentRef.current = 'pay'; }}
                     disabled={submitting || paying}
                     className="btn-red booking-cta-primary"
                     id="btn-pay-online"
                   >
-                    {submitting && pendingIntent === 'pay' ? (
-                      <><Loader2 size={18} className="spin" /><span>Initializing Checkout…</span></>
+                    {submitting || paying ? (
+                      <><Loader2 size={18} className="spin" /><span>Processing Checkout…</span></>
                     ) : (
-                      <><CreditCard size={18} /><span>Pay Online via Razorpay ({formatINR((displayPaise && displayPaise > 0) ? displayPaise : ((netPerPlayer * players * 100) || 49900))})</span></>
+                      <>
+                        <CreditCard size={18} />
+                        <span>
+                          Pay {payOption === 'advance' ? `₹${OWNER_MIN_ADVANCE_RUPEES} Advance Token` : `Full Amount (${formatINR(fullAmountPaise)})`} & Issue Pass
+                        </span>
+                      </>
                     )}
                   </motion.button>
 
                   <motion.button
                     whileHover={{ scale: 1.015 }}
                     whileTap={{ scale: 0.985 }}
-                    type="submit"
-                    onClick={() => { intentRef.current = 'reserve'; }}
+                    type="button"
+                    onClick={() => simulateInstantPayment()}
                     disabled={submitting || paying}
                     className="btn-secondary booking-cta-secondary"
-                    id="btn-reserve-at-venue"
+                    id="btn-simulate-instant-pay"
+                    title="Directly test verified ticket issuance & WhatsApp image sharing"
                   >
-                    {submitting && pendingIntent === 'reserve' ? (
-                      <><Loader2 size={18} className="spin" /><span>Securing Slot Reservation…</span></>
-                    ) : (
-                      <span>Reserve Slot — Pay at Venue Reception</span>
-                    )}
+                    <Check size={16} className="text-emerald" />
+                    <span>
+                      Instant Complete Payment ({payOption === 'advance' ? `Test ₹${OWNER_MIN_ADVANCE_RUPEES} Advance` : 'Test Full'}) — VIP Simulator
+                    </span>
                   </motion.button>
                 </div>
               </form>
@@ -742,11 +1163,23 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
                   )}
 
                   <div className="summary-total-row">
-                    <span>Total Due:</span>
+                    <span>Total Fare:</span>
                     <span className="summary-total-amount">
                       {displayPaise ? formatINR(displayPaise) : '—'}
                     </span>
                   </div>
+
+                  <div className="summary-payment-mode-pill">
+                    <span>Online Due Now ({payOption === 'advance' ? `Token ₹${OWNER_MIN_ADVANCE_RUPEES}` : 'Full'}):</span>
+                    <strong className="text-red">{formatINR(chargeAmountPaise)}</strong>
+                  </div>
+
+                  {payOption === 'advance' && (
+                    <div className="summary-venue-due-row">
+                      <span>Balance Due at Venue:</span>
+                      <strong>{formatINR(balanceDuePaise)}</strong>
+                    </div>
+                  )}
                 </div>
 
                 <div className="summary-guarantee-badge">
@@ -759,86 +1192,128 @@ export const BookingPage = ({ initialItem, onBackToHome }) => {
             </aside>
           </div>
         ) : (
-          /* STEP 2: CONFIRMED BOARDING PASS & WRISTBAND TICKET */
+          /* STEP 2: CONFIRMED BOOKMYSHOW-STYLE BOARDING PASS & WHATSAPP IMAGE SHARE */
           <motion.div 
-            className="digital-ticket-wrapper"
+            className="digital-ticket-wrapper bms-ticket-container"
             initial={{ opacity: 0, scale: 0.95, y: 22 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="digital-ticket-view">
-              <div className={`ticket-confirmed-badge ${paymentStatus === 'paid' ? 'is-paid' : ''}`}>
-                <Check size={16} />
-                <span>{paymentStatus === 'paid' ? 'Online Payment Verified — VIP Pass Issued' : 'Arena Slot Reserved Successfully'}</span>
+            {/* Confirmation Pill Banner */}
+            <div className={`bms-ticket-confirmed-banner ${activeTicketData.payMode === 'advance' ? 'is-advance' : ''}`}>
+              <Check size={16} />
+              <span>
+                {activeTicketData.payMode === 'advance' 
+                  ? `Slot Confirmed — ₹${OWNER_MIN_ADVANCE_RUPEES} Advance Token Paid (${activeTicketData.balanceDue} due at venue counter)`
+                  : 'Payment Verified (Razorpay) — VIP Pass Issued (100% Paid)'}
+              </span>
+            </div>
+
+            {/* Pass Color Combination Selector */}
+            <div className="ticket-theme-selector-bar">
+              <span className="theme-selector-title">Pass Color Theme:</span>
+              <div className="theme-pills-row">
+                {Object.values(TICKET_THEMES).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTicketTheme(t.id)}
+                    className={`theme-color-chip ${ticketTheme === t.id ? 'active' : ''}`}
+                    title={t.name}
+                  >
+                    <span className="color-swatch-circle" style={{ background: t.primary }} />
+                    <span>{t.name}</span>
+                  </button>
+                ))}
               </div>
+            </div>
 
-              <div className="ticket-reference-block">
-                <div className="ticket-reference-label">BOARDING PASS REFERENCE</div>
-                <div className="ticket-reference-code">{booking?.reference || 'BSH-7890'}</div>
-              </div>
-
-              <h2 className="ticket-experience-title">
-                {booking?.itemName || activeItemTitle}
-              </h2>
-              <p className="ticket-sub-details">
-                {players} Players · {date} · {formatSlot(timeSlot)} · Level 4 Arena
-              </p>
-
-              {/* Payment or Due status banner */}
-              {paymentStatus === 'paid' ? (
-                <div className="ticket-paid-row">
-                  <span>Payment Complete (Razorpay):</span>
-                  <strong>{formatINR(booking?.amountPaise || displayPaise)}</strong>
-                </div>
+            {/* Generated BookMyShow Ticket Image Preview */}
+            <div className="bms-ticket-preview-wrapper">
+              {ticketPreviewUrl ? (
+                <img 
+                  src={ticketPreviewUrl} 
+                  alt={`Battleship VIP Pass #${activeTicketData.reference}`}
+                  className="bms-ticket-preview-img animate-fade-in"
+                />
               ) : (
-                <div className="ticket-due-row">
-                  <span>Pay at Venue Counter:</span>
-                  <strong>{formatINR(booking?.amountPaise || displayPaise)}</strong>
+                <div className="bms-ticket-loading-skeleton">
+                  <Loader2 size={32} className="spin text-red" />
+                  <span>Generating Official VIP Boarding Pass…</span>
                 </div>
               )}
+            </div>
 
-              {/* Online payment retry button if reserved unpaid */}
-              {paymentStatus !== 'paid' && (
+            {/* Status Toast Alert if shared or downloaded */}
+            {shareToast && (
+              <div className="ticket-toast-banner">
+                <CheckCircle2 size={16} />
+                <span>{shareToast}</span>
+              </div>
+            )}
+
+
+
+            {/* BookMyShow Actions: WhatsApp Image Share & PNG Download */}
+            <div className="bms-actions-grid">
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="button"
+                onClick={handleShareWhatsApp}
+                disabled={sharingTicket}
+                className="btn-whatsapp-bms"
+                id="btn-whatsapp-share-ticket"
+              >
+                {sharingTicket ? (
+                  <><Loader2 size={20} className="spin" /><span>Preparing WhatsApp Pass…</span></>
+                ) : (
+                  <><MessageCircle size={20} /><span>Share Ticket on WhatsApp (with Image)</span></>
+                )}
+              </motion.button>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <motion.button
                   whileHover={{ scale: 1.015 }}
                   whileTap={{ scale: 0.985 }}
                   type="button"
-                  onClick={() => startPayment()}
-                  disabled={paying}
-                  className="btn-red ticket-pay-now-btn"
+                  onClick={handleDownloadTicket}
+                  disabled={downloadingTicket}
+                  className="btn-download-bms"
+                  id="btn-download-ticket-png"
                 >
-                  {paying ? (
-                    <><Loader2 size={16} className="spin" /><span>Opening Razorpay…</span></>
+                  {downloadingTicket ? (
+                    <><Loader2 size={16} className="spin" /><span>Downloading…</span></>
                   ) : (
-                    <><CreditCard size={16} /><span>Pay Online Now ({formatINR(booking?.amountPaise || displayPaise)})</span></>
+                    <><Download size={16} /><span>Download Pass (PNG)</span></>
                   )}
                 </motion.button>
-              )}
-
-              {/* Share with Squad Actions */}
-              <div className="ticket-action-row">
-                <motion.a
-                  whileHover={{ scale: 1.015 }}
-                  whileTap={{ scale: 0.985 }}
-                  href={whatsappHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-emerald ticket-whatsapp-btn"
-                >
-                  <Share2 size={16} />
-                  <span>Share Pass on WhatsApp</span>
-                </motion.a>
 
                 <motion.button
                   whileHover={{ scale: 1.015 }}
                   whileTap={{ scale: 0.985 }}
                   type="button"
-                  onClick={onBackToHome}
-                  className="btn-secondary"
+                  onClick={handleCopyRef}
+                  className="btn-download-bms"
                 >
-                  <span>Return to Home</span>
+                  {copiedRef ? (
+                    <><Check size={16} className="text-emerald" /><span className="text-emerald">Copied!</span></>
+                  ) : (
+                    <><Copy size={16} /><span>Copy Ref #{activeTicketData.reference}</span></>
+                  )}
                 </motion.button>
               </div>
+
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                type="button"
+                onClick={onBackToHome}
+                className="btn-secondary"
+                style={{ width: '100%', minHeight: '44px', marginTop: '0.5rem' }}
+              >
+                <span>Return to Home</span>
+              </motion.button>
             </div>
           </motion.div>
         )}

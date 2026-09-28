@@ -214,7 +214,7 @@ export const Hero = ({ onOpenBooking }) => {
               </div>
             </div>
 
-            {/* Action Buttons & Slide Counter */}
+            {/* Action Buttons & Slide Counter — Unified Row Alignment */}
             <div className="hero-slide-actions-wrap">
               <div className="hero-action-buttons-group">
                 <button 
@@ -225,31 +225,23 @@ export const Hero = ({ onOpenBooking }) => {
                   }}
                   className="btn-red hero-main-cta"
                 >
-                  <span>Book This Arena (₹{currentSlideGame.price})</span>
+                  <span>Book Now</span>
                   <ArrowRight size={16} />
                 </button>
 
-                <a 
-                  href="#available-booking" 
-                  className="btn-secondary hero-sub-cta"
-                >
-                  Select & Book Now
-                </a>
-              </div>
-
-              {/* Bottom Status & Pause/Play Control */}
-              <div className="carousel-controls-bottom">
-                <button 
-                  onClick={() => setIsPlaying(prev => !prev)} 
-                  className="carousel-play-toggle"
-                  title={isPlaying ? 'Pause Autoplay' : 'Resume Autoplay'}
-                  aria-label="Play / Pause Carousel"
-                >
-                  {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-                </button>
-                <span className="carousel-counter-text">
-                  0{activeSlide + 1} / 0{GAMES.length}
-                </span>
+                <div className="carousel-controls-bottom">
+                  <button 
+                    onClick={() => setIsPlaying(prev => !prev)} 
+                    className="carousel-play-toggle"
+                    title={isPlaying ? 'Pause Autoplay' : 'Resume Autoplay'}
+                    aria-label="Play / Pause Carousel"
+                  >
+                    {isPlaying ? <Pause size={14} /> : <Play size={14} />}
+                  </button>
+                  <span className="carousel-counter-text">
+                    0{activeSlide + 1} / 0{GAMES.length}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

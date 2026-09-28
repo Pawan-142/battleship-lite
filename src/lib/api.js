@@ -141,28 +141,43 @@ function handleStaticFallback(path, body) {
 
   if (path === '/api/create-order') {
     const bookingId = body?.bookingId;
+    const payMode = body?.payMode || 'full';
     const all = getLocalBookings();
     const found = all.find((b) => b.id === bookingId || b.bookingId === bookingId) || null;
+    const fullAmount = found?.amountPaise || 49900;
+    const orderAmount = payMode === 'advance' ? (Number(body?.advanceAmountPaise) || 5000) : fullAmount;
 
     return {
       bookingId: bookingId || `bk_${Date.now()}`,
       reference: found?.reference || 'BS-VIP777',
       orderId: `order_sandbox_${Date.now()}_${found?.reference || 'BS'}`,
-      amountPaise: found?.amountPaise || 49900,
+      amountPaise: orderAmount,
       currency: 'INR',
       keyId: 'rzp_test_mock_sandbox',
       sandbox: true,
+      payMode,
+      targetAmountPaise: orderAmount,
     };
   }
 
   if (path === '/api/verify-payment') {
-    const { bookingId, razorpay_payment_id } = body || {};
+    const { bookingId, razorpay_payment_id, payMode = 'full', paidAmountPaise } = body || {};
     const all = getLocalBookings();
     const index = all.findIndex((b) => b.id === bookingId || b.bookingId === bookingId);
 
     let updatedReference = 'BS-CONFIRMED';
+    let balanceDuePaise = 0;
+    let actualPaid = paidAmountPaise;
+
     if (index >= 0) {
+      const fullPaise = all[index].amountPaise || 49900;
+      actualPaid = paidAmountPaise || (payMode === 'advance' ? 5000 : fullPaise);
+      balanceDuePaise = Math.max(0, fullPaise - actualPaid);
+
       all[index].paymentStatus = 'paid';
+      all[index].payMode = payMode;
+      all[index].paidAmountPaise = actualPaid;
+      all[index].balanceDuePaise = balanceDuePaise;
       all[index].paidAt = new Date().toISOString();
       all[index].paymentId = razorpay_payment_id || `pay_mock_${Date.now()}`;
       localStorage.setItem(STORAGE_KEY_BOOKINGS, JSON.stringify(all));
@@ -173,6 +188,9 @@ function handleStaticFallback(path, body) {
       verified: true,
       paymentStatus: 'paid',
       reference: updatedReference,
+      payMode,
+      paidAmountPaise: actualPaid,
+      balanceDuePaise,
     };
   }
 
@@ -183,8 +201,8 @@ export function createBooking(payload) {
   return post('/api/bookings', payload);
 }
 
-export function createOrder(bookingId) {
-  return post('/api/create-order', { bookingId });
+export function createOrder(bookingId, options = {}) {
+  return post('/api/create-order', { bookingId, ...options });
 }
 
 export function verifyPayment(payload) {
@@ -239,14 +257,14 @@ export async function openRazorpayCheckout({
 
   return new Promise((resolve, reject) => {
     const options = {
-      key: keyId || 'rzp_test_ThAj1DL3VOR6NT',
+      key: keyId || 'rzp_test_ThOJstFRakPbiC',
       amount: amountPaise,
       currency,
       name,
       description,
       prefill,
       notes,
-      theme: { color: '#b03a2e' },
+      theme: { color: '#e11d48' },
 
       handler: (response) => resolve(response),
 
@@ -275,3 +293,5 @@ export async function openRazorpayCheckout({
     rzp.open();
   });
 }
+
+

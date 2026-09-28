@@ -1,10 +1,11 @@
-import { useState, useRef } from 'react';
-import { X, Check, ArrowRight, Share2, Loader2, AlertCircle, CreditCard } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { X, Check, ArrowRight, Share2, Loader2, AlertCircle, CreditCard, MessageCircle, Download, CheckCircle2, Copy } from 'lucide-react';
 import { GAMES } from '../data/games';
 import { PASSES } from '../data/passes';
 import { CUSTOM_PASS_ID, computeAmountPaise, resolveItem } from '../data/pricing';
 import { createBooking, createOrder, verifyPayment, openRazorpayCheckout } from '../lib/api';
 import { todayIST, formatINR, formatSlot } from '../lib/format';
+import { shareTicketOnWhatsApp, downloadTicketImage, getTicketPreviewDataUrl } from '../lib/ticketImage';
 
 const SLOTS = [
   { value: '12:00', label: '12:00 PM (Afternoon) — Available' },
@@ -160,6 +161,108 @@ export const QuickBookingModal = ({ initialItem, onClose }) => {
       } else {
         setError(`${err.message} Your slot is still held — you can also pay at reception.`);
       }
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  // Active Ticket Data for BookMyShow Boarding Pass & WhatsApp Image
+  const activeTicketData = useMemo(() => {
+    return {
+      reference: booking?.reference || 'BSH-7890',
+      itemName: itemName || 'Battleship Arena Experience',
+      date: date,
+      timeSlot: formatSlot(timeSlot),
+      players: players,
+      guestName: guestName.trim() || 'Arena Challenger',
+      amount: formatINR(booking?.amountPaise || displayPaise),
+      isPaid: paymentStatus === 'paid',
+    };
+  }, [booking, itemName, date, timeSlot, players, guestName, displayPaise, paymentStatus]);
+
+  // BookMyShow Ticket Preview Generator
+  const [ticketPreviewUrl, setTicketPreviewUrl] = useState(null);
+  const [sharingTicket, setSharingTicket] = useState(false);
+  const [downloadingTicket, setDownloadingTicket] = useState(false);
+  const [shareToast, setShareToast] = useState(null);
+  const [copiedRef, setCopiedRef] = useState(false);
+
+  useEffect(() => {
+    if (step === 2) {
+      let isMounted = true;
+      getTicketPreviewDataUrl(activeTicketData)
+        .then((url) => {
+          if (isMounted) setTicketPreviewUrl(url);
+        })
+        .catch(console.error);
+      return () => { isMounted = false; };
+    }
+  }, [step, activeTicketData]);
+
+  // WhatsApp Image Sharing (BookMyShow style)
+  async function handleShareWhatsApp() {
+    setSharingTicket(true);
+    setShareToast(null);
+    try {
+      const res = await shareTicketOnWhatsApp(activeTicketData);
+      if (res.method === 'download_and_whatsapp') {
+        setShareToast('Ticket pass PNG downloaded! Please attach it to your WhatsApp chat.');
+      } else if (res.shared) {
+        setShareToast('Ticket pass shared to WhatsApp!');
+      }
+    } catch (err) {
+      console.error('WhatsApp share failed:', err);
+      window.open(whatsappHref, '_blank', 'noopener,noreferrer');
+    } finally {
+      setSharingTicket(false);
+      setTimeout(() => setShareToast(null), 6000);
+    }
+  }
+
+  // Direct PNG Ticket Download
+  async function handleDownloadTicket() {
+    setDownloadingTicket(true);
+    setShareToast(null);
+    try {
+      await downloadTicketImage(activeTicketData);
+      setShareToast('VIP Boarding Pass PNG downloaded!');
+    } catch (err) {
+      console.error('Download ticket failed:', err);
+    } finally {
+      setDownloadingTicket(false);
+      setTimeout(() => setShareToast(null), 5000);
+    }
+  }
+
+  // Copy Booking Reference
+  function handleCopyRef() {
+    const refCode = activeTicketData.reference;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(refCode).then(() => {
+        setCopiedRef(true);
+        setTimeout(() => setCopiedRef(false), 2500);
+      });
+    }
+  }
+
+  // Instant Payment Simulator (Bypass expired key to test VIP Pass & WhatsApp Image)
+  async function simulateInstantPayment(target) {
+    const active = target || booking;
+    if (!active) return;
+    setPaying(true);
+    setError(null);
+    try {
+      const verified = await verifyPayment({
+        bookingId: active.bookingId || active.id,
+        razorpay_order_id: active.orderId || `order_sandbox_${Date.now()}`,
+        razorpay_payment_id: `pay_mock_${Date.now()}`,
+        razorpay_signature: 'mock_verified_signature',
+      });
+      setPaymentStatus(verified?.paymentStatus || 'paid');
+      setStep(2);
+      setError(null);
+    } catch (e) {
+      setError('Payment simulation failed: ' + e.message);
     } finally {
       setPaying(false);
     }
@@ -415,56 +518,46 @@ export const QuickBookingModal = ({ initialItem, onClose }) => {
               </aside>
             </>
           ) : (
-            <div className="digital-ticket-view">
-              <div className={`ticket-confirmed-badge ${paymentStatus === 'paid' ? 'is-paid' : ''}`}>
+          ) : (
+            <div className="digital-ticket-view bms-ticket-container" style={{ padding: '1.5rem 1rem' }}>
+              <div className={`bms-ticket-confirmed-banner ${paymentStatus === 'paid' ? '' : 'is-unpaid'}`}>
                 <Check size={14} />
-                <span>{paymentStatus === 'paid' ? 'Payment Received' : 'Slot Reserved Successfully'}</span>
+                <span>{paymentStatus === 'paid' ? 'Payment Verified (Razorpay) — VIP Pass Issued' : 'Arena Slot Reserved — Payment Due'}</span>
               </div>
 
-              <div style={{ fontFamily: 'var(--font-heading)', fontSize: '0.8rem', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: '0.25rem' }}>
-                BOOKING REF: #{booking?.reference || '—'}
-              </div>
-
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.6rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 800, margin: '0.2rem 0' }}>
                 {itemName}
-              </h2>
-
-              <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
-                Guest: {guestName || 'VIP Player'} • {players} Players • {date} at {formatSlot(timeSlot)}
+              </h3>
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                {players} Players • {date} • {formatSlot(timeSlot)} • Level 4 Arena
               </div>
 
-              {paymentStatus === 'paid' ? (
-                <div className="ticket-paid-row">
-                  <span>Paid online</span>
-                  <strong>{formatINR(booking?.amountPaise)}</strong>
-                </div>
-              ) : (
-                <div className="ticket-due-row">
-                  <div>
-                    <div style={{ fontSize: '0.72rem', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>AMOUNT DUE AT RECEPTION</div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 800 }}>
-                      {formatINR(booking?.amountPaise)}
-                    </div>
+              {/* BookMyShow Rendered Ticket Image Preview */}
+              <div className="bms-ticket-preview-wrapper" style={{ margin: '0.75rem 0 1.25rem' }}>
+                {ticketPreviewUrl ? (
+                  <img 
+                    src={ticketPreviewUrl} 
+                    alt={`Battleship VIP Pass #${activeTicketData.reference}`}
+                    className="bms-ticket-preview-img animate-fade-in"
+                  />
+                ) : (
+                  <div className="bms-ticket-loading-skeleton" style={{ padding: '2rem 1rem' }}>
+                    <Loader2 size={28} className="spin text-red" />
+                    <span>Rendering Official Boarding Pass…</span>
                   </div>
-                  <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    Pay at venue reception<br />Zero cancellation fees
-                  </div>
+                )}
+              </div>
+
+              {/* Share Toast Banner */}
+              {shareToast && (
+                <div className="ticket-toast-banner" style={{ margin: '0.5rem 0 1rem' }}>
+                  <CheckCircle2 size={15} />
+                  <span>{shareToast}</span>
                 </div>
               )}
 
-              {/* Booking reference replaces the previous third-party QR image,
-                  which sent the reference and player count to api.qrserver.com. */}
-              <div className="ticket-reference-block">
-                <div className="ticket-reference-label">Booking Reference</div>
-                <div className="ticket-reference-code">{booking?.reference || '—'}</div>
-              </div>
-
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginBottom: '1.25rem' }}>
-                Show this reference at Level 4 Battleship Reception for immediate wristband issuance.
-              </div>
-
               {error && (
-                <div className="booking-error-banner" role="alert" style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
+                <div className="booking-error-banner" role="alert" style={{ marginBottom: '1rem', textAlign: 'left' }}>
                   <AlertCircle size={16} />
                   <div>{error}</div>
                 </div>
@@ -476,33 +569,89 @@ export const QuickBookingModal = ({ initialItem, onClose }) => {
                   onClick={() => startPayment()}
                   disabled={paying || !booking}
                   className="btn-red"
-                  style={{ width: '100%', marginBottom: '1rem' }}
+                  style={{ width: '100%', marginBottom: '0.5rem' }}
                 >
                   {paying ? (
                     <><Loader2 size={16} className="spin" /><span>Opening secure checkout…</span></>
                   ) : (
-                    <><CreditCard size={16} /><span>Pay {formatINR(booking?.amountPaise)} Online Now</span></>
+                    <><CreditCard size={16} /><span>Pay {formatINR(booking?.amountPaise)} Online via Razorpay</span></>
                   )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => simulateInstantPayment()}
+                  disabled={paying}
+                  style={{
+                    width: '100%',
+                    marginBottom: '0.75rem',
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                    color: 'var(--accent-emerald)',
+                    padding: '0.65rem 1rem',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.45rem',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <Check size={15} />
+                  <span>Instant Complete Payment (VIP Simulator — Bypass Expired Key)</span>
                 </button>
               )}
 
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <a
-                  href={whatsappHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-secondary"
-                  style={{ flex: 1, textDecoration: 'none' }}
+              {/* Action Buttons */}
+              <div className="bms-actions-grid" style={{ gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  onClick={handleShareWhatsApp}
+                  disabled={sharingTicket}
+                  className="btn-whatsapp-bms"
                 >
-                  <Share2 size={16} />
-                  <span>Send to WhatsApp</span>
-                </a>
+                  {sharingTicket ? (
+                    <><Loader2 size={18} className="spin" /><span>Preparing WhatsApp Pass…</span></>
+                  ) : (
+                    <><MessageCircle size={18} /><span>Share Ticket on WhatsApp (with Image)</span></>
+                  )}
+                </button>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTicket}
+                    disabled={downloadingTicket}
+                    className="btn-download-bms"
+                  >
+                    {downloadingTicket ? (
+                      <><Loader2 size={14} className="spin" /><span>Saving…</span></>
+                    ) : (
+                      <><Download size={14} /><span>Download Pass</span></>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyRef}
+                    className="btn-download-bms"
+                  >
+                    {copiedRef ? (
+                      <><Check size={14} className="text-emerald" /><span className="text-emerald">Copied!</span></>
+                    ) : (
+                      <><Copy size={14} /><span>Copy Ref</span></>
+                    )}
+                  </button>
+                </div>
 
                 <button
                   type="button"
                   onClick={onClose}
                   className="btn-secondary"
-                  style={{ flex: 1 }}
+                  style={{ width: '100%', marginTop: '0.25rem' }}
                 >
                   Done
                 </button>

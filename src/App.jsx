@@ -7,6 +7,7 @@ import { VenueInfo } from './components/VenueInfo';
 import { Footer } from './components/Footer';
 import { BookingPage } from './components/BookingPage';
 import { MobileStickyBar } from './components/MobileStickyBar';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
@@ -82,10 +83,12 @@ export default function App() {
         </main>
       ) : (
         <main>
-          <BookingPage 
-            initialItem={selectedBookingItem} 
-            onBackToHome={handleBackToHome} 
-          />
+          <ErrorBoundary>
+            <BookingPage 
+              initialItem={selectedBookingItem} 
+              onBackToHome={handleBackToHome} 
+            />
+          </ErrorBoundary>
         </main>
       )}
 
